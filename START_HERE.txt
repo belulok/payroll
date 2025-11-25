@@ -1,0 +1,78 @@
+╔══════════════════════════════════════════════════════════════════════╗
+║                    PAYROLL SYSTEM - START HERE                       ║
+╚══════════════════════════════════════════════════════════════════════╝
+
+🎉 Your payroll system is ready!
+
+📋 QUICK START (3 STEPS):
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1️⃣  ENSURE MONGODB IS RUNNING
+   - MongoDB must be running on localhost:27017
+   - If not installed: https://www.mongodb.com/try/download/community
+
+2️⃣  START THE SERVERS
+
+   Option A - Automated (Windows):
+   ────────────────────────────────
+   Right-click on "start-all.ps1" → Run with PowerShell
+   
+   Option B - Manual:
+   ────────────────────────────────
+   Terminal 1 (Backend):
+   > cd backend
+   > node src/index.js
+   
+   Terminal 2 (Frontend):
+   > cd frontend
+   > npx next dev
+
+3️⃣  CREATE ADMIN USER (First time only)
+   ────────────────────────────────
+   > cd backend
+   > node seed-admin.js
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🌐 ACCESS THE APPLICATION:
+   
+   Frontend: http://localhost:3000
+   Backend API: http://localhost:3030
+
+🔐 DEFAULT LOGIN:
+   
+   Email: admin@payroll.com
+   Password: admin123
+   
+   ⚠️  Change this password after first login!
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+📚 DOCUMENTATION:
+   
+   • QUICK_START.md - Step-by-step guide
+   • README.md - Full documentation
+   • PROJECT_SUMMARY.md - What's included
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+🎯 FEATURES:
+   
+   ✅ User authentication & authorization
+   ✅ Role-based access (Admin, Agent, User)
+   ✅ Payroll management
+   ✅ Employee management
+   ✅ Responsive dashboard
+   ✅ RESTful API
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+💡 TECH STACK:
+   
+   Backend:  FeathersJS + MongoDB + Express
+   Frontend: Next.js + React 18 + TailwindCSS
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Need help? Check QUICK_START.md for detailed instructions!
+

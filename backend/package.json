@@ -1,0 +1,38 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node src/index.js",
+    "dev": "nodemon src/index.js",
+    "seed": "node seed-admin.js",
+    "seed:phase1": "node seed-phase1.js",
+    "seed:phase2": "node seed-phase2.js",
+    "seed:phase3": "node seed-phase3.js",
+    "seed:all": "node seed-admin.js && node seed-phase1.js && node seed-phase2.js && node seed-phase3.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "@feathersjs/authentication": "^5.0.37",
+    "@feathersjs/authentication-local": "^5.0.37",
+    "@feathersjs/authentication-oauth": "^5.0.37",
+    "@feathersjs/configuration": "^5.0.37",
+    "@feathersjs/errors": "^5.0.37",
+    "@feathersjs/express": "^5.0.37",
+    "@feathersjs/feathers": "^5.0.37",
+    "@feathersjs/socketio": "^5.0.37",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "feathers-mongoose": "^8.5.1",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

@@ -41,7 +41,19 @@ const workerSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+
+  // Passport Information
   passportNumber: {
+    type: String,
+    trim: true
+  },
+  passportIssueDate: {
+    type: Date
+  },
+  passportExpiryDate: {
+    type: Date
+  },
+  passportCountry: {
     type: String,
     trim: true
   },
@@ -51,9 +63,26 @@ const workerSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  jobDesignation: {
+    type: String,
+    trim: true
+  },
   department: {
     type: String,
     trim: true
+  },
+  project: {
+    type: String,
+    trim: true
+  },
+  lineManager: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'workers'
+  },
+  // Deprecated: Use project.client instead
+  client: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Client'
   },
   joinDate: {
     type: Date,

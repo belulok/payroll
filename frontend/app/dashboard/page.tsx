@@ -102,6 +102,8 @@ export default function Dashboard() {
 
   const handleLogout = async () => {
     await feathersClient.logout()
+    // Clear selected company from localStorage on logout
+    localStorage.removeItem('selectedCompanyId')
     router.push('/login')
   }
 

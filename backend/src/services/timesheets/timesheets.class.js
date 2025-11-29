@@ -115,36 +115,24 @@ class Timesheets extends Service {
     const timesheet = await this.get(id, params);
     const user = params.user;
 
-    let newStatus;
-    let approvalRole;
-
-    if (user.role === 'subcon-admin') {
-      if (timesheet.status !== 'submitted') {
-        throw new Error('Timesheet must be submitted before approval');
-      }
-      newStatus = 'approved_subcon';
-      approvalRole = 'subcon-admin';
-    } else if (user.role === 'admin') {
-      if (timesheet.status !== 'approved_subcon') {
-        throw new Error('Timesheet must be approved by subcon admin first');
-      }
-      newStatus = 'approved_admin';
-      approvalRole = 'admin';
-    } else {
+    if (!['subcon-admin', 'admin'].includes(user.role)) {
       throw new Error('Unauthorized to approve timesheets');
     }
 
-    const approvalEntry = {
-      approvedBy: user._id,
-      role: approvalRole,
-      status: 'approved',
-      comments: params.data?.comments || '',
-      timestamp: new Date()
-    };
+    if (timesheet.status === 'approved') {
+      throw new Error('Timesheet is already approved');
+    }
+
+    if (timesheet.status === 'cancelled') {
+      throw new Error('Cannot approve cancelled timesheet');
+    }
+
+    console.log(`✅ Timesheet approved by ${user.firstName} ${user.lastName} (${user.role})`);
 
     return this.patch(id, {
-      status: newStatus,
-      $push: { approvalHistory: approvalEntry }
+      status: 'approved',
+      approvedBy: user._id,
+      approvedAt: new Date()
     }, params);
   }
 
@@ -157,17 +145,23 @@ class Timesheets extends Service {
       throw new Error('Unauthorized to reject timesheets');
     }
 
-    const approvalEntry = {
-      approvedBy: user._id,
-      role: user.role,
-      status: 'rejected',
-      comments: params.data?.comments || '',
-      timestamp: new Date()
-    };
+    if (timesheet.status === 'approved') {
+      throw new Error('Cannot reject approved timesheet');
+    }
+
+    if (timesheet.status === 'cancelled') {
+      throw new Error('Cannot reject cancelled timesheet');
+    }
+
+    const rejectionReason = params.data?.reason || 'No reason provided';
+
+    console.log(`❌ Timesheet rejected by ${user.firstName} ${user.lastName} (${user.role}): ${rejectionReason}`);
 
     return this.patch(id, {
       status: 'rejected',
-      $push: { approvalHistory: approvalEntry }
+      rejectedBy: user._id,
+      rejectedAt: new Date(),
+      rejectionReason: rejectionReason
     }, params);
   }
 }

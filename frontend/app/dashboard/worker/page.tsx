@@ -247,6 +247,8 @@ export default function WorkerDashboardPage() {
         <button
           onClick={async () => {
             await feathersClient.logout();
+            // Clear selected company from localStorage on logout
+            localStorage.removeItem('selectedCompanyId');
             router.push('/login');
           }}
           className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow text-left border-2 border-red-200"

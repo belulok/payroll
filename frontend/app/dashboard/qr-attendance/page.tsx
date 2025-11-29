@@ -31,6 +31,8 @@ interface AttendanceRecord {
   date: Date;
   clockIn?: Date;
   clockOut?: Date;
+  lunchOut?: Date;
+  lunchIn?: Date;
   status: 'present' | 'late' | 'absent' | 'not-checked-in';
   checkInMethod?: string;
   qrCodeUsed?: string;
@@ -167,6 +169,8 @@ export default function QRAttendancePage() {
             date: todayEntry.date,
             clockIn: todayEntry.clockIn,
             clockOut: todayEntry.clockOut,
+            lunchOut: todayEntry.lunchOut,
+            lunchIn: todayEntry.lunchIn,
             status,
             checkInMethod: todayEntry.checkInMethod,
             qrCodeUsed: todayEntry.qrCodeCheckIn?.qrCodeData
@@ -613,6 +617,12 @@ export default function QRAttendancePage() {
                       Clock In
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Lunch Out
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Lunch In
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Clock Out
                     </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -646,6 +656,12 @@ export default function QRAttendancePage() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {record.clockIn ? new Date(record.clockIn).toLocaleTimeString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {record.lunchOut ? new Date(record.lunchOut).toLocaleTimeString() : '-'}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {record.lunchIn ? new Date(record.lunchIn).toLocaleTimeString() : '-'}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {record.clockOut ? new Date(record.clockOut).toLocaleTimeString() : '-'}

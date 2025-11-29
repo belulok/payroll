@@ -1,7 +1,12 @@
 const { authenticate } = require('@feathersjs/authentication');
 const populateUser = require('../../hooks/populate-user');
+const {
+  checkTimesheetEditPermissions,
+  checkTimesheetViewPermissions,
+  validateTimesheetCompany
+} = require('../../hooks/timesheet-permissions');
 
-// Hook to populate worker field
+// Hook to populate worker field with nested relations
 const populateWorker = () => {
   return async (context) => {
     const { app, result } = context;
@@ -10,8 +15,59 @@ const populateWorker = () => {
     const populate = async (record) => {
       if (record && record.worker) {
         const workersService = app.service('workers');
+        const projectsService = app.service('projects');
+        const clientsService = app.service('clients');
+        const companiesService = app.service('companies');
+        const tasksService = app.service('tasks');
+
         try {
+          // Populate worker
           record.worker = await workersService.get(record.worker);
+
+          // Populate company
+          if (record.company) {
+            try {
+              record.company = await companiesService.get(record.company);
+            } catch (error) {
+              console.error('Error populating company:', error);
+            }
+          }
+
+          // Populate lineManager if exists
+          if (record.worker.lineManager) {
+            try {
+              record.worker.lineManager = await workersService.get(record.worker.lineManager);
+            } catch (error) {
+              console.error('Error populating lineManager:', error);
+            }
+          }
+
+          // Populate project if exists
+          if (record.worker.project) {
+            try {
+              record.worker.project = await projectsService.get(record.worker.project);
+
+              // Populate client within project
+              if (record.worker.project.client) {
+                try {
+                  record.worker.project.client = await clientsService.get(record.worker.project.client);
+                } catch (error) {
+                  console.error('Error populating client:', error);
+                }
+              }
+            } catch (error) {
+              console.error('Error populating project:', error);
+            }
+          }
+
+          // Populate task if exists
+          if (record.task) {
+            try {
+              record.task = await tasksService.get(record.task);
+            } catch (error) {
+              console.error('Error populating task:', error);
+            }
+          }
         } catch (error) {
           console.error('Error populating worker:', error);
         }
@@ -40,12 +96,12 @@ const populateWorker = () => {
 module.exports = {
   before: {
     all: [authenticate('jwt'), populateUser()],
-    find: [],
-    get: [],
-    create: [],
-    update: [],
-    patch: [],
-    remove: []
+    find: [checkTimesheetViewPermissions()],
+    get: [checkTimesheetViewPermissions()],
+    create: [validateTimesheetCompany()],
+    update: [checkTimesheetEditPermissions(), validateTimesheetCompany()],
+    patch: [checkTimesheetEditPermissions(), validateTimesheetCompany()],
+    remove: [checkTimesheetEditPermissions()]
   },
 
   after: {

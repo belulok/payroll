@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import feathersClient from '@/lib/feathers';
+import { useCompanies, useCreateCompany, useUpdateCompany, useDeleteCompany } from '@/hooks/useCompanies';
 import { BuildingOfficeIcon, UserGroupIcon, CheckCircleIcon, ClockIcon, XCircleIcon, XMarkIcon, QrCodeIcon, PlusIcon, PencilIcon, EyeIcon, ArrowPathIcon, ShareIcon, DocumentChartBarIcon } from '@heroicons/react/24/outline';
 
 interface User {
@@ -393,8 +394,12 @@ function CompanyDetailsModal({ company, onClose }: { company: Company; onClose: 
 }
 
 export default function CompaniesPage() {
-  const [companies, setCompanies] = useState<Company[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Use TanStack Query hooks
+  const { data: companies = [], isLoading: loading } = useCompanies();
+  const createCompany = useCreateCompany();
+  const updateCompany = useUpdateCompany();
+  const deleteCompany = useDeleteCompany();
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -403,7 +408,6 @@ export default function CompaniesPage() {
 
   useEffect(() => {
     fetchCurrentUser();
-    fetchCompanies();
   }, []);
 
   const fetchCurrentUser = async () => {
@@ -414,42 +418,6 @@ export default function CompaniesPage() {
       }
     } catch (error) {
       console.error('Error fetching current user:', error);
-    }
-  };
-
-  const fetchCompanies = async () => {
-    try {
-      const response = await feathersClient.service('companies').find({
-        query: {
-          $limit: 100,
-          $sort: { name: 1 }
-        }
-      });
-
-      const companiesData = response.data || response;
-
-      // Fetch worker counts for each company
-      const companiesWithCounts = await Promise.all(
-        companiesData.map(async (company: Company) => {
-          try {
-            const workers = await feathersClient.service('workers').find({
-              query: {
-                company: company._id,
-                $limit: 0
-              }
-            });
-            return { ...company, workerCount: workers.total || 0 };
-          } catch (error) {
-            return { ...company, workerCount: 0 };
-          }
-        })
-      );
-
-      setCompanies(companiesWithCounts);
-    } catch (error) {
-      console.error('Error fetching companies:', error);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -481,15 +449,17 @@ export default function CompaniesPage() {
     try {
       if (selectedCompany) {
         // Update existing company
-        await feathersClient.service('companies').patch(selectedCompany._id, companyData);
+        await updateCompany.mutateAsync({
+          id: selectedCompany._id,
+          data: companyData
+        });
       } else {
         // Create new company
-        await feathersClient.service('companies').create(companyData);
+        await createCompany.mutateAsync(companyData);
       }
       setShowAddModal(false);
       setShowEditModal(false);
       setSelectedCompany(null);
-      fetchCompanies();
     } catch (error) {
       console.error('Error saving company:', error);
       alert('Failed to save company. Please try again.');

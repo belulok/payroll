@@ -1,7 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import feathersClient from '@/lib/feathers';
+import { useCompany } from '@/contexts/CompanyContext';
+import { usePayrollRecords, useApprovePayroll, useGeneratePayroll } from '@/hooks/usePayroll';
+import { useWorkers } from '@/hooks/useWorkers';
 import {
   BanknotesIcon,
   CheckCircleIcon,
@@ -74,55 +77,23 @@ const paymentStatusConfig = {
 };
 
 export default function PayrollPage() {
-  const [payrolls, setPayrolls] = useState<PayrollRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { selectedCompany } = useCompany();
+
+  // Use TanStack Query hooks
+  const { data: payrolls = [], isLoading: loading } = usePayrollRecords(selectedCompany?._id);
+  const { data: workers = [] } = useWorkers(selectedCompany?._id);
+  const generatePayroll = useGeneratePayroll(selectedCompany?._id);
+  const approvePayroll = useApprovePayroll(selectedCompany?._id);
+
   const [filter, setFilter] = useState<string>('all');
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [showViewModal, setShowViewModal] = useState(false);
   const [selectedPayroll, setSelectedPayroll] = useState<PayrollRecord | null>(null);
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [generating, setGenerating] = useState(false);
 
   // Generate payroll form state
   const [selectedWorker, setSelectedWorker] = useState('');
   const [periodStart, setPeriodStart] = useState('');
   const [periodEnd, setPeriodEnd] = useState('');
-
-  useEffect(() => {
-    fetchPayrolls();
-    fetchWorkers();
-  }, []);
-
-  const fetchPayrolls = async () => {
-    try {
-      const response = await feathersClient.service('payroll-records').find({
-        query: {
-          $limit: 100,
-          $sort: { periodEnd: -1 }
-        }
-      });
-      setPayrolls(response.data || response);
-    } catch (error) {
-      console.error('Error fetching payrolls:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchWorkers = async () => {
-    try {
-      const response = await feathersClient.service('workers').find({
-        query: {
-          $limit: 500,
-          isActive: true,
-          $sort: { firstName: 1 }
-        }
-      });
-      setWorkers(response.data || response);
-    } catch (error) {
-      console.error('Error fetching workers:', error);
-    }
-  };
 
   const handleGeneratePayroll = async () => {
     if (!selectedWorker || !periodStart || !periodEnd) {
@@ -130,38 +101,21 @@ export default function PayrollPage() {
       return;
     }
 
-    setGenerating(true);
     try {
-      const response = await fetch('http://localhost:3030/payroll-records/generate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          workerId: selectedWorker,
-          periodStart,
-          periodEnd
-        }),
-        credentials: 'include'
+      await generatePayroll.mutateAsync({
+        workerId: selectedWorker,
+        periodStart,
+        periodEnd
       });
 
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Failed to generate payroll');
-      }
-
-      const result = await response.json();
       alert('Payroll generated successfully!');
       setShowGenerateModal(false);
       setSelectedWorker('');
       setPeriodStart('');
       setPeriodEnd('');
-      fetchPayrolls();
     } catch (error: any) {
       console.error('Error generating payroll:', error);
       alert(error.message || 'Failed to generate payroll');
-    } finally {
-      setGenerating(false);
     }
   };
 
@@ -186,11 +140,8 @@ export default function PayrollPage() {
 
   const handleApprove = async (payrollId: string) => {
     try {
-      await feathersClient.service('payroll-records').patch(payrollId, {
-        status: 'approved'
-      });
+      await approvePayroll.mutateAsync(payrollId);
       alert('Payroll approved successfully!');
-      fetchPayrolls();
     } catch (error) {
       console.error('Error approving payroll:', error);
       alert('Failed to approve payroll');
@@ -513,10 +464,10 @@ export default function PayrollPage() {
               </button>
               <button
                 onClick={handleGeneratePayroll}
-                disabled={generating}
+                disabled={generatePayroll.isPending}
                 className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {generating ? 'Generating...' : 'Generate Payroll'}
+                {generatePayroll.isPending ? 'Generating...' : 'Generate Payroll'}
               </button>
             </div>
           </div>

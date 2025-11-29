@@ -16,3 +16,30 @@ body {
     rgb(var(--background-start-rgb));
 }
 
+/* Custom scrollbar styling for sidebar */
+/* Webkit browsers (Chrome, Safari, Edge) */
+.sidebar-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: rgba(79, 70, 229, 0.3); /* indigo-600 with opacity */
+  border-radius: 4px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.6); /* indigo-500 with opacity */
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(129, 140, 248, 0.8); /* indigo-400 with opacity */
+}
+
+/* Firefox */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.6) rgba(79, 70, 229, 0.3);
+}
+

@@ -2,6 +2,28 @@ const { Service } = require('feathers-mongoose');
 const Worker = require('../../models/worker.model');
 const Company = require('../../models/company.model');
 
+// Helper to safely extract a company id from different shapes (ObjectId, populated doc, string)
+const getCompanyId = (company) => {
+  if (!company) return null;
+
+  // If it's already a string (most common case)
+  if (typeof company === 'string') {
+    return company;
+  }
+
+  // If it's a populated document or ObjectId-like with _id
+  if (typeof company === 'object' && company._id) {
+    return company._id.toString();
+  }
+
+  // Fallback: best-effort toString
+  if (typeof company.toString === 'function') {
+    return company.toString();
+  }
+
+  return null;
+};
+
 class Workers extends Service {
   constructor(options, app) {
     super(options, app);
@@ -22,7 +44,19 @@ class Workers extends Service {
     const worker = await super.get(id, params);
 
     if (params.user && params.user.role === 'subcon-admin') {
-      if (worker.company.toString() !== params.user.company.toString()) {
+	      const workerCompanyId = getCompanyId(worker.company);
+	      const userCompanyId = getCompanyId(params.user.company);
+
+	      console.log('[Workers.get] Access check', {
+	        workerId: id,
+	        workerCompanyId,
+	        userCompanyId,
+	        userId: params.user && params.user._id,
+	        role: params.user && params.user.role
+	      });
+
+	      // Only enforce the check when we have both ids
+	      if (workerCompanyId && userCompanyId && workerCompanyId !== userCompanyId) {
         throw new Error('Unauthorized access to worker');
       }
     }
@@ -64,7 +98,19 @@ class Workers extends Service {
 
     // Check company access for subcon-admin
     if (params.user && params.user.role === 'subcon-admin') {
-      if (existing.company.toString() !== params.user.company.toString()) {
+	      const existingCompanyId = getCompanyId(existing.company);
+	      const userCompanyId = getCompanyId(params.user.company);
+
+	      console.log('[Workers.patch] Access check', {
+	        workerId: id,
+	        existingCompanyId,
+	        userCompanyId,
+	        userId: params.user && params.user._id,
+	        role: params.user && params.user.role
+	      });
+
+	      // Only enforce the check when we have both ids
+	      if (existingCompanyId && userCompanyId && existingCompanyId !== userCompanyId) {
         throw new Error('Unauthorized access to worker');
       }
     }
@@ -79,8 +125,8 @@ class Workers extends Service {
 
   // Custom method: Bulk import workers
   async bulkImport(workers, params) {
-    const company = params.user.role === 'subcon-admin' 
-      ? params.user.company 
+    const company = params.user.role === 'subcon-admin'
+      ? params.user.company
       : workers[0]?.company;
 
     if (!company) {

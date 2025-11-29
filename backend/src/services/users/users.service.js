@@ -14,6 +14,14 @@ module.exports = function (app) {
   // Get our initialized service so that we can register hooks
   const service = app.service('users');
 
+  // Register custom method for password reset
+  app.use('/users/:id/reset-password', {
+    async create(data, params) {
+      const userId = params.route.id;
+      return service.resetPassword(userId, params);
+    }
+  });
+
   service.hooks(hooks);
 };
 

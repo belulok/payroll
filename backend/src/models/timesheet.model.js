@@ -8,7 +8,7 @@ const dailyEntrySchema = new mongoose.Schema({
   },
   dayOfWeek: {
     type: String,
-    enum: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+    enum: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
     required: true
   },
   clockIn: Date,
@@ -77,6 +77,11 @@ const dailyEntrySchema = new mongoose.Schema({
   isAbsent: {
     type: Boolean,
     default: false
+  },
+  leaveType: {
+    type: String,
+    enum: ['MC', 'AL', 'PH', 'UL', 'SL', null],
+    default: null
   }
 }, { _id: false });
 
@@ -92,6 +97,13 @@ const timesheetSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'workers',
     required: true,
+    index: true
+  },
+
+  // Task information
+  task: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'tasks',
     index: true
   },
 
@@ -172,10 +184,29 @@ const timesheetSchema = new mongoose.Schema({
   // Approval workflow
   status: {
     type: String,
-    enum: ['draft', 'submitted', 'approved_subcon', 'approved_admin', 'rejected', 'cancelled'],
+    enum: ['draft', 'submitted', 'approved', 'rejected', 'cancelled'],
     default: 'draft',
     required: true,
     index: true
+  },
+
+  // Approval tracking
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'users'
+  },
+  approvedAt: {
+    type: Date
+  },
+  rejectedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'users'
+  },
+  rejectedAt: {
+    type: Date
+  },
+  rejectionReason: {
+    type: String
   },
 
   approvalHistory: [{

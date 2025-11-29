@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import feathersClient from '@/lib/feathers';
+import { useCompany } from '@/contexts/CompanyContext';
 import {
   HomeIcon,
   UsersIcon,
@@ -22,6 +23,9 @@ import {
   CalendarIcon,
   QrCodeIcon,
   ClipboardDocumentListIcon,
+  ChevronDownIcon,
+  BriefcaseIcon,
+  BanknotesIcon,
 } from '@heroicons/react/24/outline';
 
 interface MenuItem {
@@ -45,10 +49,14 @@ interface User {
 const adminMenuItems: MenuItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
   { name: 'Companies', href: '/dashboard/companies', icon: BuildingOfficeIcon },
+  { name: 'Clients', href: '/dashboard/clients', icon: UsersIcon },
+  { name: 'Organization', href: '/dashboard/organization', icon: BriefcaseIcon },
   { name: 'Workers', href: '/dashboard/workers', icon: UsersIcon },
   { name: 'QR & Attendance', href: '/dashboard/qr-attendance', icon: QrCodeIcon },
   { name: 'Timesheets', href: '/dashboard/timesheets', icon: ClockIcon },
   { name: 'Payroll', href: '/dashboard/payroll', icon: CurrencyDollarIcon },
+  { name: 'Loans', href: '/dashboard/loans', icon: BanknotesIcon },
+  { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
   { name: 'Leave Requests', href: '/dashboard/leave-requests', icon: CalendarDaysIcon },
   { name: 'Holidays', href: '/dashboard/holidays', icon: CalendarIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
@@ -60,8 +68,10 @@ export default function Sidebar() {
   const [user, setUser] = useState<User | null>(null);
   const [workerData, setWorkerData] = useState<any>(null);
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showCompanyDropdown, setShowCompanyDropdown] = useState(false);
   const pathname = usePathname();
   const router = useRouter();
+  const { selectedCompany, setSelectedCompany, companies, loading: companiesLoading } = useCompany();
 
   // Get menu items based on user role and worker payment type
   const getMenuItems = (): MenuItem[] => {
@@ -114,6 +124,8 @@ export default function Sidebar() {
   const handleLogout = async () => {
     try {
       await feathersClient.logout();
+      // Clear selected company from localStorage on logout
+      localStorage.removeItem('selectedCompanyId');
       router.push('/login');
     } catch (err) {
       console.error('Logout failed:', err);
@@ -160,7 +172,7 @@ export default function Sidebar() {
           isMobileOpen ? 'translate-y-0' : '-translate-y-full'
         }`}
       >
-        <div className="h-full bg-gradient-to-b from-indigo-600 to-indigo-800 text-white overflow-y-auto">
+        <div className="h-full bg-gradient-to-b from-indigo-600 to-indigo-800 text-white overflow-y-auto sidebar-scroll">
           {/* Mobile Header */}
           <div className="flex items-center justify-between p-6 border-b border-indigo-500">
             <h2 className="text-2xl font-bold">Payroll System</h2>
@@ -172,6 +184,52 @@ export default function Sidebar() {
               <XMarkIcon className="h-6 w-6" />
             </button>
           </div>
+
+          {/* Mobile Company Selector */}
+          {user?.role !== 'worker' && companies.length > 0 && (
+            <div className="p-4 border-b border-indigo-500">
+              <label className="block text-xs font-semibold text-indigo-200 mb-2">
+                COMPANY
+              </label>
+              <div className="relative">
+                <button
+                  onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
+                  className="w-full flex items-center justify-between px-4 py-3 bg-indigo-700 hover:bg-indigo-600 rounded-lg transition-colors"
+                >
+                  <div className="flex items-center space-x-3">
+                    <BuildingOfficeIcon className="h-5 w-5" />
+                    <span className="font-medium truncate">
+                      {selectedCompany?.name || 'Select Company'}
+                    </span>
+                  </div>
+                  <ChevronDownIcon className={`h-5 w-5 transition-transform ${showCompanyDropdown ? 'rotate-180' : ''}`} />
+                </button>
+
+                {/* Dropdown */}
+                {showCompanyDropdown && (
+                  <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl overflow-hidden z-50 max-h-60 overflow-y-auto">
+                    {companies.map((company) => (
+                      <button
+                        key={company._id}
+                        onClick={() => {
+                          setSelectedCompany(company);
+                          setShowCompanyDropdown(false);
+                        }}
+                        className={`w-full flex items-center px-4 py-3 text-left transition-colors ${
+                          selectedCompany?._id === company._id
+                            ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                            : 'text-gray-700 hover:bg-gray-100'
+                        }`}
+                      >
+                        <BuildingOfficeIcon className="h-5 w-5 mr-3" />
+                        <span className="truncate">{company.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Mobile Menu Items */}
           <nav className="p-4 space-y-2 flex-1">
@@ -274,8 +332,70 @@ export default function Sidebar() {
           </button>
         </div>
 
+        {/* Desktop Company Selector */}
+        {user?.role !== 'worker' && companies.length > 0 && (
+          <div className={`p-4 border-b border-indigo-500 ${isCollapsed ? 'px-2' : ''}`}>
+            {!isCollapsed && (
+              <label className="block text-xs font-semibold text-indigo-200 mb-2">
+                COMPANY
+              </label>
+            )}
+            <div className="relative">
+              <button
+                onClick={() => setShowCompanyDropdown(!showCompanyDropdown)}
+                className={`w-full flex items-center ${
+                  isCollapsed ? 'justify-center' : 'justify-between'
+                } px-3 py-2.5 bg-indigo-700 hover:bg-indigo-600 rounded-lg transition-colors group`}
+                title={isCollapsed ? selectedCompany?.name : ''}
+              >
+                <div className={`flex items-center ${isCollapsed ? '' : 'space-x-3'} truncate`}>
+                  <BuildingOfficeIcon className="h-5 w-5 shrink-0" />
+                  {!isCollapsed && (
+                    <span className="font-medium truncate">
+                      {selectedCompany?.name || 'Select'}
+                    </span>
+                  )}
+                </div>
+                {!isCollapsed && (
+                  <ChevronDownIcon className={`h-4 w-4 shrink-0 transition-transform ${showCompanyDropdown ? 'rotate-180' : ''}`} />
+                )}
+
+                {/* Tooltip for collapsed state */}
+                {isCollapsed && (
+                  <div className="absolute left-full ml-2 px-3 py-2 bg-gray-900 text-white text-sm rounded-lg opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all whitespace-nowrap z-50">
+                    {selectedCompany?.name || 'Select Company'}
+                  </div>
+                )}
+              </button>
+
+              {/* Dropdown */}
+              {showCompanyDropdown && (
+                <div className={`absolute ${isCollapsed ? 'left-full ml-2' : 'top-full left-0 right-0 mt-2'} bg-white rounded-lg shadow-xl overflow-hidden z-50 max-h-60 overflow-y-auto ${isCollapsed ? 'w-64' : 'w-full'}`}>
+                  {companies.map((company) => (
+                    <button
+                      key={company._id}
+                      onClick={() => {
+                        setSelectedCompany(company);
+                        setShowCompanyDropdown(false);
+                      }}
+                      className={`w-full flex items-center px-4 py-3 text-left transition-colors ${
+                        selectedCompany?._id === company._id
+                          ? 'bg-indigo-50 text-indigo-600 font-semibold'
+                          : 'text-gray-700 hover:bg-gray-100'
+                      }`}
+                    >
+                      <BuildingOfficeIcon className="h-5 w-5 mr-3 shrink-0" />
+                      <span className="truncate">{company.name}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {/* Desktop Menu Items */}
-        <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-2 overflow-y-auto sidebar-scroll">
           {menuItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;

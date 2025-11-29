@@ -1,6 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useCompany } from '@/contexts/CompanyContext';
+import { useWorkers, useCreateWorker, useUpdateWorker, useArchiveWorker, useUnarchiveWorker } from '@/hooks/useWorkers';
+import { useClients } from '@/hooks/useClients';
+import { useProjects } from '@/hooks/useProjects';
+import { useCompanies } from '@/hooks/useCompanies';
 import feathersClient from '@/lib/feathers';
 import {
   UserGroupIcon,
@@ -10,8 +15,40 @@ import {
   PlusIcon,
   PencilIcon,
   ArchiveBoxIcon,
-  XMarkIcon
+  XMarkIcon,
+  ArrowUturnLeftIcon
 } from '@heroicons/react/24/outline';
+
+interface User {
+  _id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: 'admin' | 'agent' | 'subcon-admin' | 'worker' | 'user';
+  company?: string;
+  worker?: string;
+}
+
+interface Company {
+  _id: string;
+  name: string;
+  registrationNumber?: string;
+}
+
+interface LineManager {
+  _id: string;
+  firstName: string;
+  lastName: string;
+  employeeId: string;
+  position: string;
+}
+
+interface Client {
+  _id: string;
+  name: string;
+  contactPerson?: string;
+  email?: string;
+}
 
 interface Worker {
   _id: string;
@@ -21,7 +58,16 @@ interface Worker {
   email: string;
   phone: string;
   position: string;
+  jobDesignation?: string;
   department: string;
+  project?: string;
+  lineManager?: string | LineManager;
+  client?: string | Client;
+  company?: string | Company;
+  passportNumber?: string;
+  passportIssueDate?: string;
+  passportExpiryDate?: string;
+  passportCountry?: string;
   paymentType: 'monthly-salary' | 'hourly' | 'unit-based';
   employmentStatus: string;
   isActive?: boolean;
@@ -32,6 +78,7 @@ interface Worker {
     currency: string;
   };
   leaveTier?: string;
+  user?: string;
 }
 
 const paymentTypeConfig = {
@@ -56,13 +103,30 @@ const paymentTypeConfig = {
 };
 
 export default function WorkersPage() {
-  const [workers, setWorkers] = useState<Worker[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { selectedCompany } = useCompany();
+
+  // Use TanStack Query hooks
+  const { data: workers = [], isLoading: loading } = useWorkers(selectedCompany?._id);
+	  const { data: clients = [] } = useClients(selectedCompany?._id);
+	  const { data: projects = [] } = useProjects(selectedCompany?._id);
+  const { data: companies = [] } = useCompanies();
+
+  // Debug: Log workers data to see if population is working
+  console.log('Workers data:', workers);
+  const createWorker = useCreateWorker(selectedCompany?._id);
+  const updateWorker = useUpdateWorker(selectedCompany?._id);
+  const archiveWorker = useArchiveWorker(selectedCompany?._id);
+  const unarchiveWorker = useUnarchiveWorker(selectedCompany?._id);
+
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [filter, setFilter] = useState<string>('all');
   const [showArchived, setShowArchived] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [newPassword, setNewPassword] = useState<string>('');
   const [formData, setFormData] = useState<Partial<Worker>>({
+    employeeId: '',
     firstName: '',
     lastName: '',
     email: '',
@@ -77,29 +141,39 @@ export default function WorkersPage() {
     }
   });
 
-  useEffect(() => {
-    fetchWorkers();
-  }, []);
+	// Determine which company the form should use for dropdowns. For admin/agent,
+	// this is based on the company selected in the form (if any); otherwise we
+	// fall back to the header's selectedCompany. For subcon and other roles, we
+	// always use selectedCompany.
+	const formCompanyId =
+	  currentUser && (currentUser.role === 'admin' || currentUser.role === 'agent')
+	    ? (typeof formData.company === 'string' && formData.company) || selectedCompany?._id
+	    : selectedCompany?._id;
 
-  const fetchWorkers = async () => {
-    try {
-      const response = await feathersClient.service('workers').find({
-        query: {
-          $limit: 100,
-          $sort: { employeeId: 1 }
+	// Scoped lists for the form dropdowns so we never mix clients/projects/workers
+	// from different companies when assigning a worker.
+	const { data: formWorkers = [] } = useWorkers(formCompanyId);
+	const { data: formClients = [] } = useClients(formCompanyId);
+	const { data: formProjects = [] } = useProjects(formCompanyId);
+
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const auth = await feathersClient.get('authentication');
+        if (auth && auth.user) {
+          setCurrentUser(auth.user);
         }
-      });
-      setWorkers(response.data || response);
-    } catch (error) {
-      console.error('Error fetching workers:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+      } catch (error) {
+        console.error('Error fetching current user:', error);
+      }
+    };
+    fetchCurrentUser();
+  }, []);
 
   const handleAddWorker = () => {
     setEditingWorker(null);
     setFormData({
+      employeeId: '',
       firstName: '',
       lastName: '',
       email: '',
@@ -109,6 +183,7 @@ export default function WorkersPage() {
       paymentType: 'monthly-salary',
       employmentStatus: 'active',
       isActive: true,
+      company: currentUser?.role === 'admin' ? '' : selectedCompany?._id,
       payrollInfo: {
         currency: 'MYR'
       }
@@ -116,19 +191,30 @@ export default function WorkersPage() {
     setShowModal(true);
   };
 
-  const handleEditWorker = (worker: Worker) => {
-    setEditingWorker(worker);
-    setFormData(worker);
-    setShowModal(true);
-  };
+	  const handleEditWorker = (worker: Worker) => {
+	    setEditingWorker(worker);
+
+	    // When editing, try to normalise project value to the project _id so the
+	    // dropdown can pre-select the correct option. Fall back to the original
+	    // value (name) if we can't find a matching project.
+	    const matchingProject = projects.find(
+	      (p) => p._id === worker.project || p.name === worker.project
+	    );
+
+	    setFormData({
+	      ...worker,
+	      project: matchingProject ? matchingProject._id : worker.project,
+      company: typeof worker.company === 'string' ? worker.company : worker.company?._id,
+	    });
+	    setShowModal(true);
+	  };
 
   const handleArchiveWorker = async (workerId: string) => {
     if (!confirm('Are you sure you want to archive this worker? They will be moved to the archived section.')) {
       return;
     }
     try {
-      await feathersClient.service('workers').patch(workerId, { isActive: false });
-      fetchWorkers();
+      await archiveWorker.mutateAsync(workerId);
     } catch (error) {
       console.error('Error archiving worker:', error);
       alert('Failed to archive worker');
@@ -137,8 +223,7 @@ export default function WorkersPage() {
 
   const handleUnarchiveWorker = async (workerId: string) => {
     try {
-      await feathersClient.service('workers').patch(workerId, { isActive: true });
-      fetchWorkers();
+      await unarchiveWorker.mutateAsync(workerId);
     } catch (error) {
       console.error('Error unarchiving worker:', error);
       alert('Failed to unarchive worker');
@@ -147,17 +232,83 @@ export default function WorkersPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!selectedCompany) {
+      alert('Please select a company first');
+      return;
+    }
+
     try {
+	      // Normalise relation fields so we always send clean IDs to the backend.
+	      // This avoids accidentally sending populated objects for company/manager/client.
+	      const payload: any = {
+	        ...formData,
+	      };
+
+	      if (payload.company && typeof payload.company === 'object') {
+	        payload.company = (payload.company as any)._id;
+	      }
+	      if (payload.lineManager && typeof payload.lineManager === 'object') {
+	        payload.lineManager = (payload.lineManager as any)._id;
+	      }
+	      if (payload.client && typeof payload.client === 'object') {
+	        payload.client = (payload.client as any)._id;
+	      }
+
       if (editingWorker) {
-        await feathersClient.service('workers').patch(editingWorker._id, formData);
+        await updateWorker.mutateAsync({
+          id: editingWorker._id,
+	          data: payload
+        });
       } else {
-        await feathersClient.service('workers').create(formData);
+	        const result = await createWorker.mutateAsync(payload);
+        // If a password was generated, show it to the user
+        if (result && (result as any).generatedPassword) {
+          setNewPassword((result as any).generatedPassword);
+          setShowPasswordModal(true);
+        }
       }
       setShowModal(false);
-      fetchWorkers();
+      setEditingWorker(null);
+      setFormData({
+        employeeId: '',
+        firstName: '',
+        lastName: '',
+        email: '',
+        phone: '',
+        position: '',
+        department: '',
+        paymentType: 'monthly-salary',
+        employmentStatus: 'active',
+        isActive: true,
+        company: currentUser?.role === 'admin' ? '' : selectedCompany?._id,
+        payrollInfo: {
+          currency: 'MYR'
+        }
+      });
     } catch (error) {
       console.error('Error saving worker:', error);
       alert('Failed to save worker');
+    }
+  };
+
+  const handleResetPassword = async (worker: Worker) => {
+    if (!worker.user) {
+      alert('This worker does not have a user account');
+      return;
+    }
+
+    if (!confirm(`Reset password for ${worker.firstName} ${worker.lastName}?`)) {
+      return;
+    }
+
+    try {
+      const feathersClient = (await import('@/lib/feathers')).default;
+      const response = await feathersClient.service(`users/${worker.user}/reset-password`).create({});
+      setNewPassword(response.password);
+      setShowPasswordModal(true);
+    } catch (error) {
+      console.error('Error resetting password:', error);
+      alert('Failed to reset password');
     }
   };
 
@@ -327,7 +478,7 @@ export default function WorkersPage() {
       </div>
 
       {/* Workers Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
@@ -335,28 +486,55 @@ export default function WorkersPage() {
                 Employee
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Position
+                Position & Dept
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Company
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Line Manager
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Client / Project
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Payment Type
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Rate/Salary
-              </th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Status
               </th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <th className="sticky right-0 bg-gray-50 px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
                 Actions
               </th>
             </tr>
           </thead>
-          <tbody className="bg-white divide-y divide-gray-200">
-            {filteredWorkers.map((worker) => {
-              const config = paymentTypeConfig[worker.paymentType as keyof typeof paymentTypeConfig] || paymentTypeConfig['hourly'];
-              const Icon = config.icon;
+	          <tbody className="bg-white divide-y divide-gray-200">
+	            {filteredWorkers.map((worker) => {
+	              const config = paymentTypeConfig[worker.paymentType as keyof typeof paymentTypeConfig] || paymentTypeConfig['hourly'];
+	              const Icon = config.icon;
 
-              return (
+	              // Resolve project and client using the projects list so we can
+	              // always show both client (top) and project (bottom).
+	              const project = projects.find(
+	                (p) => p._id === worker.project || p.name === worker.project
+	              );
+	          const clientFromProject =
+	            project && typeof project.client === 'object' && project.client
+	              ? project.client
+	              : null;
+	          const clientFromWorkerId =
+	            !clientFromProject && typeof worker.client === 'string'
+	              ? clients.find((c) => c._id === worker.client) || null
+	              : null;
+	          const clientToDisplay =
+	            clientFromProject ||
+	            clientFromWorkerId ||
+	            (typeof worker.client === 'object' && worker.client
+	              ? (worker.client as any)
+	              : null);
+	              const projectNameToDisplay = project ? project.name : worker.project;
+
+	              return (
                 <tr key={worker._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
@@ -376,15 +554,61 @@ export default function WorkersPage() {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="text-sm text-gray-900">{worker.position}</div>
                     <div className="text-sm text-gray-500">{worker.department}</div>
+                    {worker.jobDesignation && (
+                      <div className="text-xs text-gray-400">{worker.jobDesignation}</div>
+                    )}
                   </td>
+	                  <td className="px-6 py-4 whitespace-nowrap">
+	                    <div className="text-sm text-gray-900">
+	                      {selectedCompany?.name
+	                        || (typeof worker.company === 'object' && worker.company
+	                          ? worker.company.name
+	                          : 'N/A')}
+	                    </div>
+	                    {(selectedCompany?.registrationNumber
+	                      || (typeof worker.company === 'object' && worker.company?.registrationNumber)) && (
+	                      <div className="text-xs text-gray-500">
+	                        {selectedCompany?.registrationNumber || (worker.company as Company)?.registrationNumber}
+	                      </div>
+	                    )}
+	                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    {typeof worker.lineManager === 'object' && worker.lineManager ? (
+                      <div>
+                        <div className="text-sm text-gray-900">
+                          {worker.lineManager.firstName} {worker.lineManager.lastName}
+                        </div>
+                        <div className="text-xs text-gray-500">{worker.lineManager.position}</div>
+                      </div>
+                    ) : (
+                      <span className="text-sm text-gray-400">-</span>
+                    )}
+                  </td>
+	                  <td className="px-6 py-4">
+	                    <div className="space-y-1">
+	                      {clientToDisplay ? (
+	                        <div className="flex items-center gap-1.5">
+	                          <span className="text-xs text-gray-400">🏢</span>
+	                          <span className="text-sm font-medium text-gray-900">{clientToDisplay.name}</span>
+	                        </div>
+	                      ) : (
+	                        <div className="text-xs text-gray-400">No client assigned</div>
+	                      )}
+	                      {projectNameToDisplay ? (
+	                        <div className="flex items-center gap-1.5">
+	                          <span className="text-xs text-gray-400">📋</span>
+	                          <span className="text-xs text-gray-600">{projectNameToDisplay}</span>
+	                        </div>
+	                      ) : (
+	                        <div className="text-xs text-gray-400">No project assigned</div>
+	                      )}
+	                    </div>
+	                  </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${config.color}`}>
                       <Icon className={`h-4 w-4 mr-1 ${config.iconColor}`} />
                       {config.label}
                     </span>
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {getPaymentDisplay(worker)}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
@@ -395,30 +619,40 @@ export default function WorkersPage() {
                       {worker.employmentStatus}
                     </span>
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                  <td className="sticky right-0 bg-white px-6 py-4 whitespace-nowrap text-right text-sm font-medium shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
                     {!showArchived ? (
-                      <>
+                      <div className="flex items-center justify-end gap-3">
                         <button
                           onClick={() => handleEditWorker(worker)}
-                          className="text-indigo-600 hover:text-indigo-900 mr-4 inline-flex items-center gap-1"
+                          className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                          title="Edit worker details"
                         >
-                          <PencilIcon className="h-4 w-4" />
-                          Edit
+                          <PencilIcon className="h-5 w-5" />
                         </button>
+                        {worker.user && (
+                          <button
+                            onClick={() => handleResetPassword(worker)}
+                            className="text-orange-600 hover:text-orange-900 transition-colors"
+                            title="Reset worker password"
+                          >
+                            <span className="text-lg">🔑</span>
+                          </button>
+                        )}
                         <button
                           onClick={() => handleArchiveWorker(worker._id)}
-                          className="text-gray-600 hover:text-gray-900 inline-flex items-center gap-1"
+                          className="text-gray-600 hover:text-gray-900 transition-colors"
+                          title="Archive this worker"
                         >
-                          <ArchiveBoxIcon className="h-4 w-4" />
-                          Archive
+                          <ArchiveBoxIcon className="h-5 w-5" />
                         </button>
-                      </>
+                      </div>
                     ) : (
                       <button
                         onClick={() => handleUnarchiveWorker(worker._id)}
-                        className="text-green-600 hover:text-green-900 inline-flex items-center gap-1"
+                        className="text-green-600 hover:text-green-900 transition-colors"
+                        title="Restore this worker from archive"
                       >
-                        Unarchive
+                        <ArrowUturnLeftIcon className="h-5 w-5" />
                       </button>
                     )}
                   </td>
@@ -460,10 +694,51 @@ export default function WorkersPage() {
             </div>
 
             <form onSubmit={handleSubmit} className="p-6 space-y-6">
+              {/* Company Selection (Admin & Agent Only) */}
+              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'agent') && (
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Assignment</h3>
+                  <div className="grid grid-cols-1 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Company *
+                      </label>
+                      <select
+                        required
+                        value={typeof formData.company === 'string' ? formData.company : ''}
+                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      >
+                        <option value="">-- Select Company --</option>
+                        {companies.map((company) => (
+                          <option key={company._id} value={company._id}>
+                            {company.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Personal Information */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
                 <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Employee ID *
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.employeeId || ''}
+                      onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g., W001"
+                    />
+                  </div>
+                  <div></div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       First Name *
@@ -514,6 +789,59 @@ export default function WorkersPage() {
                 </div>
               </div>
 
+              {/* Passport Information */}
+              <div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Passport Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Passport Number
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.passportNumber || ''}
+                      onChange={(e) => setFormData({ ...formData, passportNumber: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g., A12345678"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Country of Issue
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.passportCountry || ''}
+                      onChange={(e) => setFormData({ ...formData, passportCountry: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g., Malaysia"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Issue Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.passportIssueDate || ''}
+                      onChange={(e) => setFormData({ ...formData, passportIssueDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Expiry Date
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.passportExpiryDate || ''}
+                      onChange={(e) => setFormData({ ...formData, passportExpiryDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                </div>
+              </div>
+
               {/* Employment Information */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Employment Information</h3>
@@ -532,6 +860,17 @@ export default function WorkersPage() {
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Job Designation
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.jobDesignation || ''}
+                      onChange={(e) => setFormData({ ...formData, jobDesignation: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
                       Department *
                     </label>
                     <input
@@ -541,6 +880,75 @@ export default function WorkersPage() {
                       onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Project
+                    </label>
+	                    <select
+	                      value={typeof formData.project === 'string' ? formData.project : (formData.project as any) || ''}
+	                      onChange={(e) => {
+	                        const value = e.target.value;
+				                const selectedProject = formProjects.find(
+	                          (p) => p._id === value
+	                        );
+	                        setFormData((prev) => ({
+	                          ...prev,
+	                          project: value || undefined,
+	                          // When a project is selected, auto-set client based on the
+	                          // project's client so the linkage stays consistent.
+	                          client: selectedProject && selectedProject.client
+	                            ? (typeof selectedProject.client === 'string'
+	                              ? selectedProject.client
+	                              : (selectedProject.client as any)._id)
+	                            : prev.client,
+	                        }));
+	                      }}
+	                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+	                    >
+	                      <option value="">-- Select Project --</option>
+				              {formProjects.filter(p => p.isActive).map((project) => (
+	                        <option key={project._id} value={project._id}>
+	                          {typeof project.client === 'object' && project.client
+	                            ? `${project.client.name} - ${project.name}`
+	                            : project.name}
+	                        </option>
+	                      ))}
+	                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Line Manager
+                    </label>
+                    <select
+                      value={typeof formData.lineManager === 'string' ? formData.lineManager : (formData.lineManager as any)?._id || ''}
+                      onChange={(e) => setFormData({ ...formData, lineManager: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    >
+                      <option value="">-- Select Line Manager --</option>
+		                      {formWorkers.filter(w => w.isActive).map((worker) => (
+                        <option key={worker._id} value={worker._id}>
+                          {worker.firstName} {worker.lastName} ({worker.employeeId})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Client
+                    </label>
+                    <select
+                      value={typeof formData.client === 'string' ? formData.client : (formData.client as any)?._id || ''}
+                      onChange={(e) => setFormData({ ...formData, client: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    >
+                      <option value="">-- Select Client --</option>
+		                      {formClients.filter(c => c.isActive).map((client) => (
+                        <option key={client._id} value={client._id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -635,6 +1043,49 @@ export default function WorkersPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Password Modal (for both new worker and password reset) */}
+      {showPasswordModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              {editingWorker ? 'Password Reset Successful' : 'Worker Account Created'}
+            </h2>
+            <p className="text-gray-600 mb-4">
+              {editingWorker
+                ? 'The password has been reset. Please provide this password to the worker:'
+                : 'A user account has been created for this worker. Please provide this password to them:'}
+            </p>
+            <div className="bg-gray-100 p-4 rounded-lg mb-6">
+              <p className="text-sm text-gray-600 mb-2">Password:</p>
+              <p className="text-2xl font-mono font-bold text-indigo-600 break-all">{newPassword}</p>
+            </div>
+            <p className="text-sm text-amber-600 mb-6">
+              ⚠️ This password will only be shown once. Make sure to save it or send it to the worker.
+            </p>
+            <div className="flex gap-3">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(newPassword);
+                  alert('Password copied to clipboard!');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 font-medium"
+              >
+                Copy Password
+              </button>
+              <button
+                onClick={() => {
+                  setShowPasswordModal(false);
+                  setNewPassword('');
+                }}
+                className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

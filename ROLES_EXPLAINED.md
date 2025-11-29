@@ -85,6 +85,13 @@ Company {
 }
 ```
 
+**Login Example:**
+```
+Email: agent@payroll.com
+Password: password123
+```
+
+
 **How It Works:**
 - Agent user is created with role 'agent'
 - Companies are assigned to the agent via `company.agent` field

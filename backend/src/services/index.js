@@ -9,10 +9,28 @@ const leaveBalances = require('./leave-balances/leave-balances.service.js');
 const leaveRequests = require('./leave-requests/leave-requests.service.js');
 const gazettedHolidays = require('./gazetted-holidays/gazetted-holidays.service.js');
 const unitRecords = require('./unit-records/unit-records.service.js');
+const clients = require('./clients/clients.service.js');
+const projects = require('./projects/projects.service.js');
+const positions = require('./positions/positions.service.js');
+const departments = require('./departments/departments.service.js');
+const jobBands = require('./job-bands/job-bands.service.js');
+const jobGrades = require('./job-grades/job-grades.service.js');
+const tasks = require('./tasks/tasks.service.js');
+const loans = require('./loans/loans.service.js');
+const invoices = require('./invoices/invoices.service.js');
 
 module.exports = function (app) {
   app.configure(users);
   app.configure(companies);
+  app.configure(clients);
+  app.configure(projects);
+  app.configure(departments);
+  app.configure(positions);
+  app.configure(jobBands);
+  app.configure(jobGrades);
+  app.configure(tasks);
+  app.configure(loans);
+  app.configure(invoices);
   app.configure(workers);
   app.configure(timesheets);
   app.configure(payrollRecords);

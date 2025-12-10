@@ -2,36 +2,35 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
 import { useCompany } from '@/contexts/CompanyContext';
 
-export interface JobBand {
+export interface WorkerGroup {
   _id: string;
   company: string;
   name: string;
   code?: string;
   description?: string;
-  level: number;
   isActive: boolean;
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
 }
 
-export function useJobBands(filters?: { isActive?: boolean }) {
+export function useWorkerGroups(filters?: { isActive?: boolean }) {
   const { selectedCompany } = useCompany();
 
   return useQuery({
-    queryKey: ['job-bands', selectedCompany, filters],
+    queryKey: ['worker-groups', selectedCompany, filters],
     queryFn: async () => {
       const query: any = {
         company: selectedCompany,
         $limit: 1000,
-        $sort: { level: 1, name: 1 }
+        $sort: { name: 1 }
       };
 
       if (filters?.isActive !== undefined) {
         query.isActive = filters.isActive;
       }
 
-      const response = await feathersClient.service('job-bands').find({ query });
+      const response = await feathersClient.service('worker-groups').find({ query });
       return response.data || response;
     },
     enabled: !!selectedCompany,
@@ -40,41 +39,41 @@ export function useJobBands(filters?: { isActive?: boolean }) {
   });
 }
 
-export function useCreateJobBand() {
+export function useCreateWorkerGroup() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<JobBand>) => {
-      return await feathersClient.service('job-bands').create(data);
+    mutationFn: async (data: Partial<WorkerGroup>) => {
+      return await feathersClient.service('worker-groups').create(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-bands'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-groups'] });
     },
   });
 }
 
-export function useUpdateJobBand() {
+export function useUpdateWorkerGroup() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Partial<JobBand> }) => {
-      return await feathersClient.service('job-bands').patch(id, data);
+    mutationFn: async ({ id, data }: { id: string; data: Partial<WorkerGroup> }) => {
+      return await feathersClient.service('worker-groups').patch(id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-bands'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-groups'] });
     },
   });
 }
 
-export function useDeleteJobBand() {
+export function useDeleteWorkerGroup() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (id: string) => {
-      return await feathersClient.service('job-bands').remove(id);
+      return await feathersClient.service('worker-groups').remove(id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['job-bands'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-groups'] });
     },
   });
 }

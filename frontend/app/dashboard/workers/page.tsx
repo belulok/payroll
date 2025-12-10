@@ -6,6 +6,8 @@ import { useWorkers, useCreateWorker, useUpdateWorker, useArchiveWorker, useUnar
 import { useClients } from '@/hooks/useClients';
 import { useProjects } from '@/hooks/useProjects';
 import { useCompanies } from '@/hooks/useCompanies';
+import { useJobBands } from '@/hooks/useJobBands';
+import { useWorkerGroups } from '@/hooks/useWorkerGroups';
 import feathersClient from '@/lib/feathers';
 import {
   UserGroupIcon,
@@ -50,6 +52,37 @@ interface Client {
   email?: string;
 }
 
+interface JobBand {
+  _id: string;
+  name: string;
+  code?: string;
+}
+
+interface WorkerGroup {
+  _id: string;
+  name: string;
+  code?: string;
+}
+
+interface ProjectLocation {
+  _id?: string;
+  name: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
+  isDefault?: boolean;
+}
+
+interface Project {
+  _id: string;
+  name: string;
+  client?: string | Client;
+  locations?: ProjectLocation[];
+  isActive: boolean;
+}
+
 interface Worker {
   _id: string;
   employeeId: string;
@@ -61,9 +94,12 @@ interface Worker {
   jobDesignation?: string;
   department: string;
   project?: string;
+  workLocation?: string; // Location name from project locations
   lineManager?: string | LineManager;
   client?: string | Client;
   company?: string | Company;
+  jobBand?: string | JobBand;
+  workerGroup?: string | WorkerGroup;
   passportNumber?: string;
   passportIssueDate?: string;
   passportExpiryDate?: string;
@@ -125,6 +161,7 @@ export default function WorkersPage() {
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState<string>('');
+  const [activeFormTab, setActiveFormTab] = useState<'personal' | 'passport' | 'employment' | 'payment'>('personal');
   const [formData, setFormData] = useState<Partial<Worker>>({
     employeeId: '',
     firstName: '',
@@ -155,6 +192,8 @@ export default function WorkersPage() {
 	const { data: formWorkers = [] } = useWorkers(formCompanyId);
 	const { data: formClients = [] } = useClients(formCompanyId);
 	const { data: formProjects = [] } = useProjects(formCompanyId);
+	const { data: jobBands = [] } = useJobBands({ isActive: true });
+	const { data: workerGroups = [] } = useWorkerGroups({ isActive: true });
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -252,6 +291,12 @@ export default function WorkersPage() {
 	      }
 	      if (payload.client && typeof payload.client === 'object') {
 	        payload.client = (payload.client as any)._id;
+	      }
+	      if (payload.jobBand && typeof payload.jobBand === 'object') {
+	        payload.jobBand = (payload.jobBand as any)._id;
+	      }
+	      if (payload.workerGroup && typeof payload.workerGroup === 'object') {
+	        payload.workerGroup = (payload.workerGroup as any)._id;
 	      }
 
       if (editingWorker) {
@@ -680,367 +725,543 @@ export default function WorkersPage() {
       {/* Add/Edit Worker Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
-              <h2 className="text-2xl font-bold text-gray-900">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white">
                 {editingWorker ? 'Edit Worker' : 'Add New Worker'}
               </h2>
               <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-gray-600"
+                onClick={() => {
+                  setShowModal(false);
+                  setActiveFormTab('personal');
+                }}
+                className="text-white hover:text-indigo-100 transition-colors"
               >
                 <XMarkIcon className="h-6 w-6" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="p-6 space-y-6">
-              {/* Company Selection (Admin & Agent Only) */}
-              {currentUser && (currentUser.role === 'admin' || currentUser.role === 'agent') && (
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Assignment</h3>
-                  <div className="grid grid-cols-1 gap-4">
+            {/* Tabs */}
+            <div className="border-b border-gray-200 bg-gray-50">
+              <nav className="flex -mb-px">
+                {[
+                  { id: 'personal', label: 'Personal', icon: '👤' },
+                  { id: 'passport', label: 'Passport', icon: '🛂' },
+                  { id: 'employment', label: 'Employment', icon: '💼' },
+                  { id: 'payment', label: 'Payment', icon: '💰' },
+                ].map((tab) => (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    onClick={() => setActiveFormTab(tab.id as any)}
+                    className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                      activeFormTab === tab.id
+                        ? 'border-indigo-600 text-indigo-600 bg-white'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    }`}
+                  >
+                    <span className="mr-1.5">{tab.icon}</span>
+                    {tab.label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+              <div className="p-6 space-y-6">
+                {/* Company Selection (Admin & Agent Only) - Show on Personal tab */}
+                {activeFormTab === 'personal' && currentUser && (currentUser.role === 'admin' || currentUser.role === 'agent') && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-amber-800 mb-2">
+                      Company Assignment *
+                    </label>
+                    <select
+                      required
+                      value={typeof formData.company === 'string' ? formData.company : ''}
+                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+                    >
+                      <option value="">-- Select Company --</option>
+                      {companies.map((company) => (
+                        <option key={company._id} value={company._id}>
+                          {company.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                {/* Personal Information Tab */}
+                {activeFormTab === 'personal' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="col-span-2 sm:col-span-1">
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Employee ID *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.employeeId || ''}
+                          onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="e.g., W001"
+                        />
+                      </div>
+                      <div className="hidden sm:block"></div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          First Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.firstName || ''}
+                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Last Name *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.lastName || ''}
+                          onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Email *
+                        </label>
+                        <input
+                          type="email"
+                          required
+                          value={formData.email || ''}
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Phone
+                        </label>
+                        <input
+                          type="tel"
+                          value={formData.phone || ''}
+                          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Passport Information Tab */}
+                {activeFormTab === 'passport' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Passport Number
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.passportNumber || ''}
+                          onChange={(e) => setFormData({ ...formData, passportNumber: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="e.g., A12345678"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Country of Issue
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.passportCountry || ''}
+                          onChange={(e) => setFormData({ ...formData, passportCountry: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          placeholder="e.g., Malaysia"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Issue Date
+                        </label>
+                        <input
+                          type="date"
+                          value={formData.passportIssueDate || ''}
+                          onChange={(e) => setFormData({ ...formData, passportIssueDate: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Expiry Date
+                        </label>
+                        <input
+                          type="date"
+                          value={formData.passportExpiryDate || ''}
+                          onChange={(e) => setFormData({ ...formData, passportExpiryDate: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                    </div>
+                    <p className="text-sm text-gray-500 mt-4">
+                      💡 Passport information is optional but recommended for foreign workers.
+                    </p>
+                  </div>
+                )}
+
+                {/* Employment Information Tab */}
+                {activeFormTab === 'employment' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Position *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.position || ''}
+                          onChange={(e) => setFormData({ ...formData, position: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Job Designation
+                        </label>
+                        <input
+                          type="text"
+                          value={formData.jobDesignation || ''}
+                          onChange={(e) => setFormData({ ...formData, jobDesignation: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Department *
+                        </label>
+                        <input
+                          type="text"
+                          required
+                          value={formData.department || ''}
+                          onChange={(e) => setFormData({ ...formData, department: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-1">
+                          Employment Status *
+                        </label>
+                        <select
+                          required
+                          value={formData.employmentStatus || 'active'}
+                          onChange={(e) => setFormData({ ...formData, employmentStatus: e.target.value })}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        >
+                          <option value="active">Active</option>
+                          <option value="probation">Probation</option>
+                          <option value="contract">Contract</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    {/* Grouping Section */}
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Classification</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Job Band
+                          </label>
+                          <select
+                            value={typeof formData.jobBand === 'string' ? formData.jobBand : (formData.jobBand as any)?._id || ''}
+                            onChange={(e) => setFormData({ ...formData, jobBand: e.target.value || undefined })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Job Band --</option>
+                            {jobBands.map((band: JobBand) => (
+                              <option key={band._id} value={band._id}>
+                                {band.name} {band.code ? `(${band.code})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Worker Group
+                          </label>
+                          <select
+                            value={typeof formData.workerGroup === 'string' ? formData.workerGroup : (formData.workerGroup as any)?._id || ''}
+                            onChange={(e) => setFormData({ ...formData, workerGroup: e.target.value || undefined })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Worker Group --</option>
+                            {workerGroups.map((group: WorkerGroup) => (
+                              <option key={group._id} value={group._id}>
+                                {group.name} {group.code ? `(${group.code})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Assignment Section */}
+                    <div className="border-t border-gray-200 pt-4 mt-4">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Assignment</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        {/* 1. Client First */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Client
+                          </label>
+                          <select
+                            value={typeof formData.client === 'string' ? formData.client : (formData.client as any)?._id || ''}
+                            onChange={(e) => {
+                              // When client changes, reset project and location
+                              setFormData({
+                                ...formData,
+                                client: e.target.value,
+                                project: undefined,
+                                workLocation: undefined
+                              });
+                            }}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Client --</option>
+                            {formClients.filter(c => c.isActive).map((client) => (
+                              <option key={client._id} value={client._id}>
+                                {client.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* 2. Project (filtered by Client) */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Project
+                          </label>
+                          <select
+                            value={typeof formData.project === 'string' ? formData.project : (formData.project as any) || ''}
+                            onChange={(e) => {
+                              // When project changes, reset location
+                              setFormData({
+                                ...formData,
+                                project: e.target.value || undefined,
+                                workLocation: undefined
+                              });
+                            }}
+                            disabled={!formData.client}
+                            className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${!formData.client ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                          >
+                            <option value="">{formData.client ? '-- Select Project --' : '-- Select Client First --'}</option>
+                            {formProjects
+                              .filter(p => {
+                                if (!p.isActive) return false;
+                                if (!formData.client) return false;
+                                const projectClientId = typeof p.client === 'string' ? p.client : (p.client as any)?._id;
+                                const selectedClientId = typeof formData.client === 'string' ? formData.client : (formData.client as any)?._id;
+                                return projectClientId === selectedClientId;
+                              })
+                              .map((project) => (
+                                <option key={project._id} value={project._id}>
+                                  {project.name}
+                                </option>
+                              ))}
+                          </select>
+                        </div>
+
+                        {/* 3. Location (filtered by Project) */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Work Location
+                          </label>
+                          {(() => {
+                            const selectedProject = formProjects.find(p => p._id === formData.project);
+                            const projectLocations = (selectedProject as any)?.locations || [];
+                            return (
+                              <select
+                                value={formData.workLocation || ''}
+                                onChange={(e) => setFormData({ ...formData, workLocation: e.target.value || undefined })}
+                                disabled={!formData.project || projectLocations.length === 0}
+                                className={`w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent ${(!formData.project || projectLocations.length === 0) ? 'bg-gray-100 cursor-not-allowed' : ''}`}
+                              >
+                                <option value="">
+                                  {!formData.project
+                                    ? '-- Select Project First --'
+                                    : projectLocations.length === 0
+                                      ? '-- No Locations Available --'
+                                      : '-- Select Location --'}
+                                </option>
+                                {projectLocations.map((loc: ProjectLocation, idx: number) => (
+                                  <option key={loc._id || idx} value={loc.name}>
+                                    {loc.name} {loc.isDefault ? '(Default)' : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            );
+                          })()}
+                        </div>
+
+                        {/* Line Manager */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Line Manager
+                          </label>
+                          <select
+                            value={typeof formData.lineManager === 'string' ? formData.lineManager : (formData.lineManager as any)?._id || ''}
+                            onChange={(e) => setFormData({ ...formData, lineManager: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Line Manager --</option>
+                            {formWorkers.filter(w => w.isActive).map((worker) => (
+                              <option key={worker._id} value={worker._id}>
+                                {worker.firstName} {worker.lastName} ({worker.employeeId})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Payment Information Tab */}
+                {activeFormTab === 'payment' && (
+                  <div className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-1">
-                        Company *
+                        Payment Type *
                       </label>
                       <select
                         required
-                        value={typeof formData.company === 'string' ? formData.company : ''}
-                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                        value={formData.paymentType || 'monthly-salary'}
+                        onChange={(e) => setFormData({ ...formData, paymentType: e.target.value as any })}
                         className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                       >
-                        <option value="">-- Select Company --</option>
-                        {companies.map((company) => (
-                          <option key={company._id} value={company._id}>
-                            {company.name}
-                          </option>
-                        ))}
+                        <option value="monthly-salary">Monthly Salary</option>
+                        <option value="hourly">Hourly</option>
+                        <option value="unit-based">Unit-Based</option>
                       </select>
                     </div>
-                  </div>
-                </div>
-              )}
 
-              {/* Personal Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Personal Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Employee ID *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.employeeId || ''}
-                      onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="e.g., W001"
-                    />
-                  </div>
-                  <div></div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      First Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.firstName || ''}
-                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Last Name *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.lastName || ''}
-                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Email *
-                    </label>
-                    <input
-                      type="email"
-                      required
-                      value={formData.email || ''}
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Phone
-                    </label>
-                    <input
-                      type="tel"
-                      value={formData.phone || ''}
-                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
+                    {formData.paymentType === 'monthly-salary' && (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                        <label className="block text-sm font-medium text-blue-800 mb-2">
+                          Monthly Salary (RM) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.01"
+                          value={formData.payrollInfo?.monthlySalary || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            payrollInfo: { ...formData.payrollInfo, monthlySalary: parseFloat(e.target.value), currency: 'MYR' }
+                          })}
+                          className="w-full px-3 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                          placeholder="e.g., 3000.00"
+                        />
+                        <p className="text-xs text-blue-600 mt-2">
+                          💡 This amount will be used for monthly payroll calculations.
+                        </p>
+                      </div>
+                    )}
 
-              {/* Passport Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Passport Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Passport Number
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.passportNumber || ''}
-                      onChange={(e) => setFormData({ ...formData, passportNumber: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="e.g., A12345678"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Country of Issue
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.passportCountry || ''}
-                      onChange={(e) => setFormData({ ...formData, passportCountry: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="e.g., Malaysia"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Issue Date
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.passportIssueDate || ''}
-                      onChange={(e) => setFormData({ ...formData, passportIssueDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Expiry Date
-                    </label>
-                    <input
-                      type="date"
-                      value={formData.passportExpiryDate || ''}
-                      onChange={(e) => setFormData({ ...formData, passportExpiryDate: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-              </div>
+                    {formData.paymentType === 'hourly' && (
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                        <label className="block text-sm font-medium text-green-800 mb-2">
+                          Hourly Rate (RM) *
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.01"
+                          value={formData.payrollInfo?.hourlyRate || ''}
+                          onChange={(e) => setFormData({
+                            ...formData,
+                            payrollInfo: { ...formData.payrollInfo, hourlyRate: parseFloat(e.target.value), currency: 'MYR' }
+                          })}
+                          className="w-full px-3 py-2 border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                          placeholder="e.g., 15.00"
+                        />
+                        <p className="text-xs text-green-600 mt-2">
+                          💡 This rate supersedes Job Band/Worker Group rates.
+                        </p>
+                      </div>
+                    )}
 
-              {/* Employment Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Employment Information</h3>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Position *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.position || ''}
-                      onChange={(e) => setFormData({ ...formData, position: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Job Designation
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.jobDesignation || ''}
-                      onChange={(e) => setFormData({ ...formData, jobDesignation: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Department *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={formData.department || ''}
-                      onChange={(e) => setFormData({ ...formData, department: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Project
-                    </label>
-	                    <select
-	                      value={typeof formData.project === 'string' ? formData.project : (formData.project as any) || ''}
-	                      onChange={(e) => {
-	                        const value = e.target.value;
-				                const selectedProject = formProjects.find(
-	                          (p) => p._id === value
-	                        );
-	                        setFormData((prev) => ({
-	                          ...prev,
-	                          project: value || undefined,
-	                          // When a project is selected, auto-set client based on the
-	                          // project's client so the linkage stays consistent.
-	                          client: selectedProject && selectedProject.client
-	                            ? (typeof selectedProject.client === 'string'
-	                              ? selectedProject.client
-	                              : (selectedProject.client as any)._id)
-	                            : prev.client,
-	                        }));
-	                      }}
-	                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-	                    >
-	                      <option value="">-- Select Project --</option>
-				              {formProjects.filter(p => p.isActive).map((project) => (
-	                        <option key={project._id} value={project._id}>
-	                          {typeof project.client === 'object' && project.client
-	                            ? `${project.client.name} - ${project.name}`
-	                            : project.name}
-	                        </option>
-	                      ))}
-	                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Line Manager
-                    </label>
-                    <select
-                      value={typeof formData.lineManager === 'string' ? formData.lineManager : (formData.lineManager as any)?._id || ''}
-                      onChange={(e) => setFormData({ ...formData, lineManager: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    >
-                      <option value="">-- Select Line Manager --</option>
-		                      {formWorkers.filter(w => w.isActive).map((worker) => (
-                        <option key={worker._id} value={worker._id}>
-                          {worker.firstName} {worker.lastName} ({worker.employeeId})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Client
-                    </label>
-                    <select
-                      value={typeof formData.client === 'string' ? formData.client : (formData.client as any)?._id || ''}
-                      onChange={(e) => setFormData({ ...formData, client: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    >
-                      <option value="">-- Select Client --</option>
-		                      {formClients.filter(c => c.isActive).map((client) => (
-                        <option key={client._id} value={client._id}>
-                          {client.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Payment Type *
-                    </label>
-                    <select
-                      required
-                      value={formData.paymentType || 'monthly-salary'}
-                      onChange={(e) => setFormData({ ...formData, paymentType: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    >
-                      <option value="monthly-salary">Monthly Salary</option>
-                      <option value="hourly">Hourly</option>
-                      <option value="unit-based">Unit-Based</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Employment Status *
-                    </label>
-                    <select
-                      required
-                      value={formData.employmentStatus || 'active'}
-                      onChange={(e) => setFormData({ ...formData, employmentStatus: e.target.value })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    >
-                      <option value="active">Active</option>
-                      <option value="probation">Probation</option>
-                      <option value="contract">Contract</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* Payment Information */}
-              <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Information</h3>
-                {formData.paymentType === 'monthly-salary' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Monthly Salary (RM) *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      value={formData.payrollInfo?.monthlySalary || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        payrollInfo: { ...formData.payrollInfo, monthlySalary: parseFloat(e.target.value), currency: 'MYR' }
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
-                  </div>
-                )}
-                {formData.paymentType === 'hourly' && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">
-                      Hourly Rate (RM) *
-                    </label>
-                    <input
-                      type="number"
-                      required
-                      min="0"
-                      step="0.01"
-                      value={formData.payrollInfo?.hourlyRate || ''}
-                      onChange={(e) => setFormData({
-                        ...formData,
-                        payrollInfo: { ...formData.payrollInfo, hourlyRate: parseFloat(e.target.value), currency: 'MYR' }
-                      })}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                    />
+                    {formData.paymentType === 'unit-based' && (
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <p className="text-sm text-purple-700">
+                          💡 Unit-based rates can be configured in the Compensation settings.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Form Actions */}
-              <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
-                >
-                  {editingWorker ? 'Update Worker' : 'Add Worker'}
-                </button>
+              {/* Form Actions Footer */}
+              <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex justify-between items-center">
+                <div className="flex gap-2">
+                  {activeFormTab !== 'personal' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tabs = ['personal', 'passport', 'employment', 'payment'] as const;
+                        const currentIdx = tabs.indexOf(activeFormTab);
+                        if (currentIdx > 0) setActiveFormTab(tabs[currentIdx - 1]);
+                      }}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                    >
+                      ← Previous
+                    </button>
+                  )}
+                  {activeFormTab !== 'payment' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const tabs = ['personal', 'passport', 'employment', 'payment'] as const;
+                        const currentIdx = tabs.indexOf(activeFormTab);
+                        if (currentIdx < tabs.length - 1) setActiveFormTab(tabs[currentIdx + 1]);
+                      }}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                    >
+                      Next →
+                    </button>
+                  )}
+                </div>
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowModal(false);
+                      setActiveFormTab('personal');
+                    }}
+                    className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+                  >
+                    {editingWorker ? 'Update Worker' : 'Add Worker'}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

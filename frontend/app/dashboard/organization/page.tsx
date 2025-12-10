@@ -23,18 +23,23 @@ import {
   type Task
 } from '@/hooks/useTasks';
 import {
+  useWorkerGroups, useCreateWorkerGroup, useUpdateWorkerGroup, useDeleteWorkerGroup,
+  type WorkerGroup
+} from '@/hooks/useWorkerGroups';
+import {
   BuildingOfficeIcon,
   BriefcaseIcon,
   ChartBarIcon,
   AcademicCapIcon,
   ClipboardDocumentListIcon,
+  UserGroupIcon,
   PlusIcon,
   PencilIcon,
   TrashIcon,
   XMarkIcon
 } from '@heroicons/react/24/outline';
 
-type TabType = 'departments' | 'positions' | 'job-structure' | 'tasks';
+type TabType = 'departments' | 'positions' | 'job-structure' | 'groups' | 'tasks';
 
 export default function OrganizationPage() {
   const { selectedCompany } = useCompany();
@@ -45,6 +50,7 @@ export default function OrganizationPage() {
   const [positionFilter, setPositionFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [jobBandFilter, setJobBandFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [jobGradeFilter, setJobGradeFilter] = useState<'all' | 'active' | 'inactive'>('active');
+  const [groupFilter, setGroupFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [taskFilter, setTaskFilter] = useState<'all' | 'active' | 'inactive'>('active');
 
   // Modal states
@@ -52,12 +58,14 @@ export default function OrganizationPage() {
   const [showPositionModal, setShowPositionModal] = useState(false);
   const [showJobBandModal, setShowJobBandModal] = useState(false);
   const [showJobGradeModal, setShowJobGradeModal] = useState(false);
+  const [showGroupModal, setShowGroupModal] = useState(false);
   const [showTaskModal, setShowTaskModal] = useState(false);
 
   const [selectedDepartment, setSelectedDepartment] = useState<Department | null>(null);
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [selectedJobBand, setSelectedJobBand] = useState<JobBand | null>(null);
   const [selectedJobGrade, setSelectedJobGrade] = useState<JobGrade | null>(null);
+  const [selectedGroup, setSelectedGroup] = useState<WorkerGroup | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   // Fetch ALL data (no filtering on backend - we'll filter on frontend for accurate counts)
@@ -65,6 +73,7 @@ export default function OrganizationPage() {
   const { data: allPositions = [], isLoading: positionsLoading } = usePositions({});
   const { data: allJobBands = [], isLoading: jobBandsLoading } = useJobBands({});
   const { data: allJobGrades = [], isLoading: jobGradesLoading } = useJobGrades({});
+  const { data: allGroups = [], isLoading: groupsLoading } = useWorkerGroups({});
   const { data: allTasks = [], isLoading: tasksLoading } = useTasks({});
 
   // Filter data on frontend based on filter state
@@ -83,6 +92,10 @@ export default function OrganizationPage() {
   const jobGrades = jobGradeFilter === 'all'
     ? allJobGrades
     : allJobGrades.filter(g => g.isActive === (jobGradeFilter === 'active'));
+
+  const groups = groupFilter === 'all'
+    ? allGroups
+    : allGroups.filter(g => g.isActive === (groupFilter === 'active'));
 
   const tasks = taskFilter === 'all'
     ? allTasks
@@ -104,6 +117,10 @@ export default function OrganizationPage() {
   const createJobGrade = useCreateJobGrade();
   const updateJobGrade = useUpdateJobGrade();
   const deleteJobGrade = useDeleteJobGrade();
+
+  const createGroup = useCreateWorkerGroup();
+  const updateGroup = useUpdateWorkerGroup();
+  const deleteGroup = useDeleteWorkerGroup();
 
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
@@ -213,6 +230,32 @@ export default function OrganizationPage() {
     setShowJobGradeModal(false);
   };
 
+  // Handlers for Groups
+  const handleAddGroup = () => {
+    setSelectedGroup(null);
+    setShowGroupModal(true);
+  };
+
+  const handleEditGroup = (group: WorkerGroup) => {
+    setSelectedGroup(group);
+    setShowGroupModal(true);
+  };
+
+  const handleDeleteGroup = async (id: string) => {
+    if (confirm('Are you sure you want to delete this group?')) {
+      await deleteGroup.mutateAsync(id);
+    }
+  };
+
+  const handleSaveGroup = async (data: Partial<WorkerGroup>) => {
+    if (selectedGroup) {
+      await updateGroup.mutateAsync({ id: selectedGroup._id, data });
+    } else {
+      await createGroup.mutateAsync({ ...data, company: selectedCompany });
+    }
+    setShowGroupModal(false);
+  };
+
   // Handlers for Tasks
   const handleAddTask = () => {
     setSelectedTask(null);
@@ -296,6 +339,17 @@ export default function OrganizationPage() {
             Job Bands & Grades
           </button>
           <button
+            onClick={() => setActiveTab('groups')}
+            className={`${
+              activeTab === 'groups'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+          >
+            <UserGroupIcon className="h-5 w-5" />
+            Groups
+          </button>
+          <button
             onClick={() => setActiveTab('tasks')}
             className={`${
               activeTab === 'tasks'
@@ -362,6 +416,20 @@ export default function OrganizationPage() {
         />
       )}
 
+      {/* Groups Tab */}
+      {activeTab === 'groups' && (
+        <GroupsTab
+          groups={groups}
+          allGroups={allGroups}
+          isLoading={groupsLoading}
+          filter={groupFilter}
+          setFilter={setGroupFilter}
+          onAdd={handleAddGroup}
+          onEdit={handleEditGroup}
+          onDelete={handleDeleteGroup}
+        />
+      )}
+
       {/* Tasks Tab */}
       {activeTab === 'tasks' && (
         <TasksTab
@@ -412,6 +480,14 @@ export default function OrganizationPage() {
           jobBands={jobBands}
           onClose={() => setShowJobGradeModal(false)}
           onSave={handleSaveJobGrade}
+        />
+      )}
+
+      {showGroupModal && (
+        <GroupFormModal
+          group={selectedGroup}
+          onClose={() => setShowGroupModal(false)}
+          onSave={handleSaveGroup}
         />
       )}
 
@@ -1844,6 +1920,267 @@ function JobGradeFormModal({ jobGrade, jobBands, onClose, onSave }: {
               className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
             >
               {jobGrade ? 'Update' : 'Create'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// Groups Tab Component
+function GroupsTab({ groups, allGroups, isLoading, filter, setFilter, onAdd, onEdit, onDelete }: {
+  groups: WorkerGroup[];
+  allGroups: WorkerGroup[];
+  isLoading: boolean;
+  filter: 'all' | 'active' | 'inactive';
+  setFilter: (filter: 'all' | 'active' | 'inactive') => void;
+  onAdd: () => void;
+  onEdit: (group: WorkerGroup) => void;
+  onDelete: (id: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      {/* Filter Tabs and Add Button */}
+      <div className="flex justify-between items-center">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1 inline-flex">
+          <button
+            onClick={() => setFilter('all')}
+            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              filter === 'all' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            All ({allGroups.length})
+          </button>
+          <button
+            onClick={() => setFilter('active')}
+            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              filter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Active ({allGroups.filter(g => g.isActive).length})
+          </button>
+          <button
+            onClick={() => setFilter('inactive')}
+            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              filter === 'inactive' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
+            }`}
+          >
+            Inactive ({allGroups.filter(g => !g.isActive).length})
+          </button>
+        </div>
+        <button
+          onClick={onAdd}
+          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+        >
+          <PlusIcon className="h-5 w-5 mr-2" />
+          Add Group
+        </button>
+      </div>
+
+      {/* Groups Table */}
+      {isLoading ? (
+        <div className="flex justify-center items-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+          <UserGroupIcon className="mx-auto h-12 w-12 text-gray-400" />
+          <h3 className="mt-2 text-sm font-medium text-gray-900">No groups</h3>
+          <p className="mt-1 text-sm text-gray-500">Get started by creating a new group.</p>
+          <div className="mt-6">
+            <button
+              onClick={onAdd}
+              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+            >
+              <PlusIcon className="h-5 w-5 mr-2" />
+              Add Group
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-white rounded-lg shadow overflow-x-auto">
+          <table className="min-w-full divide-y divide-gray-200">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Group Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Code
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Description
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                  Status
+                </th>
+                <th className="sticky right-0 bg-gray-50 px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {groups.map((group) => (
+                <tr key={group._id} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center">
+                      <UserGroupIcon className="h-5 w-5 text-indigo-600 mr-2" />
+                      <div className="text-sm font-medium text-gray-900">{group.name}</div>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="text-sm text-gray-900">{group.code || '-'}</div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <div className="text-sm text-gray-900 max-w-xs truncate">{group.description || '-'}</div>
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      group.isActive ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'
+                    }`}>
+                      {group.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="sticky right-0 bg-white px-6 py-4 whitespace-nowrap text-right text-sm font-medium shadow-[-2px_0_4px_rgba(0,0,0,0.05)]">
+                    <div className="flex items-center justify-end gap-3">
+                      <button
+                        onClick={() => onEdit(group)}
+                        className="text-indigo-600 hover:text-indigo-900 transition-colors"
+                        title="Edit"
+                      >
+                        <PencilIcon className="h-5 w-5" />
+                      </button>
+                      <button
+                        onClick={() => onDelete(group._id)}
+                        className="text-red-600 hover:text-red-900 transition-colors"
+                        title="Delete"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Group Form Modal Component
+function GroupFormModal({ group, onClose, onSave }: {
+  group: WorkerGroup | null;
+  onClose: () => void;
+  onSave: (data: Partial<WorkerGroup>) => void;
+}) {
+  const [formData, setFormData] = useState<Partial<WorkerGroup>>({
+    name: group?.name || '',
+    code: group?.code || '',
+    description: group?.description || '',
+    isActive: group?.isActive ?? true,
+    notes: group?.notes || '',
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onSave(formData);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center p-4 z-50">
+      <div className="bg-white rounded-lg max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center sticky top-0 bg-white">
+          <h3 className="text-lg font-medium text-gray-900">
+            {group ? 'Edit Group' : 'Add Group'}
+          </h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-500">
+            <XMarkIcon className="h-6 w-6" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Group Name *
+              </label>
+              <input
+                type="text"
+                required
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="e.g., Team A, Night Shift, Site Workers"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700">
+                Code
+              </label>
+              <input
+                type="text"
+                value={formData.code}
+                onChange={(e) => setFormData({ ...formData, code: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="e.g., GRP-A"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Description
+              </label>
+              <textarea
+                rows={3}
+                value={formData.description}
+                onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+                placeholder="Describe the purpose of this group"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.isActive}
+                  onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                  className="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-500 focus:ring-blue-500"
+                />
+                <span className="ml-2 text-sm text-gray-700">Active</span>
+              </label>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-gray-700">
+                Notes
+              </label>
+              <textarea
+                rows={2}
+                value={formData.notes}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4 border-t">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700"
+            >
+              {group ? 'Update' : 'Create'}
             </button>
           </div>
         </form>

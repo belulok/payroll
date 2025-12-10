@@ -4,6 +4,7 @@ import feathersClient from '@/lib/feathers';
 export interface Loan {
   _id: string;
   loanId: string;
+  category: 'loan' | 'advance';
   worker: {
     _id: string;
     firstName: string;
@@ -62,14 +63,14 @@ export function useLoans(companyId: string | undefined) {
     queryKey: ['loans', companyId],
     queryFn: async () => {
       if (!companyId) return [];
-      
+
       const response = await feathersClient.service('loans').find({
         query: {
           company: companyId,
           $sort: { createdAt: -1 }
         }
       });
-      
+
       return response.data || response;
     },
     enabled: !!companyId,
@@ -142,16 +143,16 @@ export function useRecordLoanPayment(companyId: string | undefined) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async ({ 
-      loanId, 
-      amount, 
-      payrollRecordId, 
-      installmentNumber 
-    }: { 
-      loanId: string; 
-      amount: number; 
-      payrollRecordId?: string; 
-      installmentNumber?: number; 
+    mutationFn: async ({
+      loanId,
+      amount,
+      payrollRecordId,
+      installmentNumber
+    }: {
+      loanId: string;
+      amount: number;
+      payrollRecordId?: string;
+      installmentNumber?: number;
     }) => {
       return await feathersClient.service('loans').recordPayment(loanId, {
         amount,

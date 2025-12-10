@@ -19,10 +19,18 @@ exports.Loans = class Loans extends Service {
       data.createdBy = params.user._id;
     }
 
-    // Generate loan ID if not provided
+    // Generate loan ID if not provided (different prefix for loan vs advance)
     if (!data.loanId) {
-      const count = await this.Model.countDocuments({ company: data.company });
-      data.loanId = `LOAN${String(count + 1).padStart(4, '0')}`;
+      const category = data.category || 'advance';
+      const prefix = category === 'loan' ? 'LOAN' : 'ADV';
+
+      // Count only records of the same category for proper sequencing
+      const count = await this.Model.countDocuments({
+        company: data.company,
+        category: category
+      });
+
+      data.loanId = `${prefix}${String(count + 1).padStart(4, '0')}`;
     }
 
     // Calculate total amount with interest
@@ -33,16 +41,19 @@ exports.Loans = class Loans extends Service {
     }
     data.remainingAmount = data.totalAmount;
 
-    // Create the loan
-    const loan = await super.create(data, params);
+    // Create the loan document using Model directly to get Mongoose document
+    const loanDoc = new this.Model(data);
 
     // Generate installments if needed
-    if (loan.hasInstallments) {
-      loan.generateInstallments();
-      await loan.save();
+    if (loanDoc.hasInstallments) {
+      loanDoc.generateInstallments();
     }
 
-    return loan;
+    // Save the document
+    await loanDoc.save();
+
+    // Return the saved loan with proper formatting
+    return loanDoc.toObject();
   }
 
   async patch(id, data, params) {
@@ -62,7 +73,7 @@ exports.Loans = class Loans extends Service {
     if (data.principalAmount !== undefined || data.interestRate !== undefined) {
       const principalAmount = data.principalAmount || existing.principalAmount;
       const interestRate = data.interestRate !== undefined ? data.interestRate : existing.interestRate;
-      
+
       if (interestRate > 0) {
         data.totalAmount = principalAmount * (1 + interestRate / 100);
       } else {
@@ -71,20 +82,31 @@ exports.Loans = class Loans extends Service {
       data.remainingAmount = data.totalAmount - existing.totalPaidAmount;
     }
 
-    const updated = await super.patch(id, data, params);
-
-    // Regenerate installments if installment settings changed
-    if (updated.hasInstallments && (
+    // Check if we need to regenerate installments
+    const needsInstallmentRegeneration = data.hasInstallments && (
       data.installmentType !== undefined ||
       data.installmentAmount !== undefined ||
       data.installmentCount !== undefined ||
       data.startDate !== undefined
-    )) {
-      updated.generateInstallments();
-      await updated.save();
+    );
+
+    if (needsInstallmentRegeneration) {
+      // Get the Mongoose document to use the method
+      const loanDoc = await this.Model.findById(id);
+
+      // Update the document with new data
+      Object.assign(loanDoc, data);
+
+      // Regenerate installments
+      loanDoc.generateInstallments();
+
+      // Save and return
+      await loanDoc.save();
+      return loanDoc.toObject();
     }
 
-    return updated;
+    // Otherwise use normal patch
+    return await super.patch(id, data, params);
   }
 
   async find(params) {
@@ -155,13 +177,13 @@ exports.Loans = class Loans extends Service {
   // Custom method to record payment
   async recordPayment(id, paymentData, params) {
     const loan = await this.get(id, params);
-    
+
     const { amount, payrollRecordId, installmentNumber } = paymentData;
-    
+
     // Update total paid amount
     loan.totalPaidAmount += amount;
     loan.remainingAmount = loan.totalAmount - loan.totalPaidAmount;
-    
+
     // Update specific installment if provided
     if (installmentNumber && loan.installments) {
       const installment = loan.installments.find(inst => inst.installmentNumber === installmentNumber);
@@ -169,19 +191,19 @@ exports.Loans = class Loans extends Service {
         installment.paidAmount += amount;
         installment.paidAt = new Date();
         installment.payrollRecordId = payrollRecordId;
-        
+
         if (installment.paidAmount >= installment.amount) {
           installment.status = 'paid';
         }
       }
     }
-    
+
     // Check if loan is completed
     if (loan.remainingAmount <= 0) {
       loan.status = 'completed';
       loan.completedAt = new Date();
     }
-    
+
     await loan.save();
     return loan;
   }

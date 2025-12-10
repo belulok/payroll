@@ -55,6 +55,12 @@ const loanSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  category: {
+    type: String,
+    enum: ['loan', 'advance'],
+    default: 'advance',
+    required: true
+  },
   principalAmount: {
     type: Number,
     required: true,
@@ -103,7 +109,7 @@ const loanSchema = new mongoose.Schema({
     default: 'active',
     index: true
   },
-  
+
   // Dates
   loanDate: {
     type: Date,
@@ -154,6 +160,7 @@ loanSchema.index({ company: 1, loanId: 1 }, { unique: true });
 loanSchema.index({ company: 1, worker: 1 });
 loanSchema.index({ company: 1, status: 1 });
 loanSchema.index({ worker: 1, status: 1 });
+loanSchema.index({ company: 1, category: 1 });
 
 // Virtual for outstanding balance
 loanSchema.virtual('outstandingBalance').get(function() {
@@ -188,11 +195,11 @@ loanSchema.methods.generateInstallments = function() {
   }
 
   const startDate = new Date(this.startDate);
-  
+
   for (let i = 1; i <= installmentCount; i++) {
     const dueDate = new Date(startDate);
     dueDate.setMonth(dueDate.getMonth() + i);
-    
+
     const amount = i === installmentCount ? remainingAmount : installmentAmount;
     remainingAmount -= amount;
 

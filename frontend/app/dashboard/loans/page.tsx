@@ -44,6 +44,7 @@ export default function LoansPage() {
   const [editingLoan, setEditingLoan] = useState<Loan | null>(null);
   const [formData, setFormData] = useState<Partial<Loan>>({
     worker: undefined,
+    category: 'advance',
     principalAmount: 0,
     interestRate: 0,
     hasInstallments: false,
@@ -73,6 +74,7 @@ export default function LoansPage() {
     setEditingLoan(null);
     setFormData({
       worker: undefined,
+      category: 'advance',
       principalAmount: 0,
       interestRate: 0,
       hasInstallments: false,
@@ -91,6 +93,7 @@ export default function LoansPage() {
     setEditingLoan(loan);
     setFormData({
       worker: typeof loan.worker === 'object' ? loan.worker._id : loan.worker,
+      category: loan.category || 'advance',
       principalAmount: loan.principalAmount,
       interestRate: loan.interestRate,
       hasInstallments: loan.hasInstallments,
@@ -106,12 +109,12 @@ export default function LoansPage() {
   };
 
   const handleDeleteLoan = async (loanId: string) => {
-    if (window.confirm('Are you sure you want to delete this loan?')) {
+    if (window.confirm('Are you sure you want to delete this record?')) {
       try {
         await deleteLoan.mutateAsync(loanId);
       } catch (error) {
-        console.error('Failed to delete loan:', error);
-        alert('Failed to delete loan');
+        console.error('Failed to delete record:', error);
+        alert('Failed to delete record');
       }
     }
   };
@@ -139,8 +142,8 @@ export default function LoansPage() {
       setShowModal(false);
       setEditingLoan(null);
     } catch (error) {
-      console.error('Failed to save loan:', error);
-      alert('Failed to save loan');
+      console.error('Failed to save record:', error);
+      alert('Failed to save record');
     }
   };
 
@@ -195,16 +198,16 @@ export default function LoansPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-3">
               <BanknotesIcon className="h-8 w-8 text-indigo-600" />
-              Loan Management
+              Financing Management
             </h1>
-            <p className="text-gray-600 mt-1">Manage employee loans and installments</p>
+            <p className="text-gray-600 mt-1">Manage employee advances, loans and installments</p>
           </div>
           <button
             onClick={handleAddLoan}
             className="bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 flex items-center gap-2 font-medium"
           >
             <PlusIcon className="h-5 w-5" />
-            Add New Loan
+            Add New Record
           </button>
         </div>
       </div>
@@ -214,7 +217,7 @@ export default function LoansPage() {
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Total Loans</p>
+              <p className="text-sm font-medium text-gray-600">Total Records</p>
               <p className="text-2xl font-bold text-gray-900">{loans.length}</p>
             </div>
             <BanknotesIcon className="h-8 w-8 text-indigo-600" />
@@ -224,7 +227,7 @@ export default function LoansPage() {
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium text-gray-600">Active Loans</p>
+              <p className="text-sm font-medium text-gray-600">Active</p>
               <p className="text-2xl font-bold text-blue-600">
                 {loans.filter(l => l.status === 'active').length}
               </p>
@@ -266,7 +269,7 @@ export default function LoansPage() {
         <div className="px-6 py-4 border-b border-gray-200">
           <div className="flex flex-wrap gap-2">
             {[
-              { key: 'all', label: 'All Loans', count: loans.length },
+              { key: 'all', label: 'All Records', count: loans.length },
               { key: 'active', label: 'Active', count: loans.filter(l => l.status === 'active').length },
               { key: 'completed', label: 'Completed', count: loans.filter(l => l.status === 'completed').length },
               { key: 'cancelled', label: 'Cancelled', count: loans.filter(l => l.status === 'cancelled').length },
@@ -288,13 +291,13 @@ export default function LoansPage() {
         </div>
       </div>
 
-      {/* Loans Table */}
+      {/* Records Table */}
       <div className="bg-white rounded-lg shadow overflow-x-auto">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                Loan Details
+                Record Details
               </th>
               <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                 Employee
@@ -321,9 +324,9 @@ export default function LoansPage() {
               <tr>
                 <td colSpan={7} className="px-6 py-12 text-center">
                   <BanknotesIcon className="mx-auto h-12 w-12 text-gray-400" />
-                  <h3 className="mt-2 text-sm font-medium text-gray-900">No loans found</h3>
+                  <h3 className="mt-2 text-sm font-medium text-gray-900">No records found</h3>
                   <p className="mt-1 text-sm text-gray-500">
-                    {filter === 'all' ? 'Get started by creating a new loan.' : `No ${filter} loans found.`}
+                    {filter === 'all' ? 'Get started by creating a new advance or loan.' : `No ${filter} records found.`}
                   </p>
                   {filter === 'all' && (
                     <div className="mt-6">
@@ -332,7 +335,7 @@ export default function LoansPage() {
                         className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
                       >
                         <PlusIcon className="-ml-1 mr-2 h-5 w-5" />
-                        Add New Loan
+                        Add New Record
                       </button>
                     </div>
                   )}
@@ -352,6 +355,15 @@ export default function LoansPage() {
                         <div className="text-sm font-medium text-gray-900">{loan.loanId}</div>
                         <div className="text-sm text-gray-500">
                           {new Date(loan.loanDate).toLocaleDateString()}
+                        </div>
+                        <div className="mt-1">
+                          <span className={`inline-flex px-2 py-0.5 text-xs font-medium rounded ${
+                            loan.category === 'loan'
+                              ? 'bg-purple-100 text-purple-800'
+                              : 'bg-blue-100 text-blue-800'
+                          }`}>
+                            {loan.category === 'loan' ? 'Loan' : 'Advance'}
+                          </span>
                         </div>
                         {loan.description && (
                           <div className="text-xs text-gray-400 mt-1">{loan.description}</div>
@@ -458,7 +470,7 @@ export default function LoansPage() {
                         <button
                           onClick={() => handleEditLoan(loan)}
                           className="text-indigo-600 hover:text-indigo-900 p-1 rounded"
-                          title="Edit loan"
+                          title="Edit record"
                         >
                           <PencilIcon className="h-4 w-4" />
                         </button>
@@ -466,7 +478,7 @@ export default function LoansPage() {
                           <button
                             onClick={() => handleDeleteLoan(loan._id)}
                             className="text-red-600 hover:text-red-900 p-1 rounded"
-                            title="Delete loan"
+                            title="Delete record"
                           >
                             <TrashIcon className="h-4 w-4" />
                           </button>
@@ -481,13 +493,13 @@ export default function LoansPage() {
         </table>
       </div>
 
-      {/* Add/Edit Loan Modal */}
+      {/* Add/Edit Record Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             <div className="sticky top-0 bg-white border-b border-gray-200 px-6 py-4 flex items-center justify-between">
               <h2 className="text-2xl font-bold text-gray-900">
-                {editingLoan ? 'Edit Loan' : 'Add New Loan'}
+                {editingLoan ? 'Edit Record' : 'Add New Advance/Loan'}
               </h2>
               <button
                 onClick={() => setShowModal(false)}
@@ -501,7 +513,7 @@ export default function LoansPage() {
               {/* Employee Selection */}
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-4">Employee Information</h3>
-                <div className="grid grid-cols-1 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
                       Employee *
@@ -520,12 +532,30 @@ export default function LoansPage() {
                       ))}
                     </select>
                   </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Category *
+                    </label>
+                    <select
+                      required
+                      value={formData.category || 'advance'}
+                      onChange={(e) => setFormData({ ...formData, category: e.target.value as 'loan' | 'advance' })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    >
+                      <option value="advance">Advance</option>
+                      <option value="loan">Loan</option>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Advance: Short-term payment, Loan: Long-term with interest
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Loan Details */}
+              {/* Amount Details */}
               <div>
-                <h3 className="text-lg font-semibold text-gray-900 mb-4">Loan Details</h3>
+                <h3 className="text-lg font-semibold text-gray-900 mb-4">Amount Details</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -606,7 +636,7 @@ export default function LoansPage() {
                     </span>
                   </label>
                   <p className="text-xs text-gray-500 mt-1">
-                    If enabled, the loan will be deducted from payroll in installments
+                    If enabled, the amount will be deducted from payroll in installments
                   </p>
                 </div>
 
@@ -693,7 +723,7 @@ export default function LoansPage() {
                       value={formData.description || ''}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                      placeholder="Brief description of the loan purpose"
+                      placeholder="Brief description of the purpose"
                     />
                   </div>
 
@@ -712,10 +742,10 @@ export default function LoansPage() {
                 </div>
               </div>
 
-              {/* Loan Summary */}
+              {/* Summary */}
               {formData.principalAmount > 0 && (
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Loan Summary</h4>
+                  <h4 className="text-sm font-semibold text-gray-900 mb-2">Summary</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600">Principal Amount:</span>
@@ -772,7 +802,7 @@ export default function LoansPage() {
                   type="submit"
                   className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
                 >
-                  {editingLoan ? 'Update Loan' : 'Create Loan'}
+                  {editingLoan ? 'Update Record' : 'Create Record'}
                 </button>
               </div>
             </form>

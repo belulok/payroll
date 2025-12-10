@@ -75,6 +75,11 @@ const workerSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  // Work location (from project locations)
+  workLocation: {
+    type: String,
+    trim: true
+  },
   lineManager: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'workers'
@@ -83,6 +88,17 @@ const workerSchema = new mongoose.Schema({
   client: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Client'
+  },
+
+  // Job Band and Group (for compensation configuration)
+  // Worker's individual salary/wages supersede group/band settings
+  jobBand: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'job-bands'
+  },
+  workerGroup: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'worker-groups'
   },
   joinDate: {
     type: Date,

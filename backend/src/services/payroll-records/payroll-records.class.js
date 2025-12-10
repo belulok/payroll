@@ -1,6 +1,8 @@
 const { Service } = require('feathers-mongoose');
 const Timesheet = require('../../models/timesheet.model');
 const Worker = require('../../models/worker.model');
+const CompensationConfig = require('../../models/compensation-config.model');
+const Loan = require('../../models/loan.model');
 const {
   calculateStatutoryDeductions,
   calculateGrossPay,
@@ -40,6 +42,84 @@ class PayrollRecords extends Service {
     return payroll;
   }
 
+  // Helper: Get deduction configuration for worker (Group priority > Job Band)
+  async getDeductionConfig(worker, companyId) {
+    const compensationConfig = await CompensationConfig.findOne({ company: companyId });
+    if (!compensationConfig || !compensationConfig.deductionConfigs) {
+      return null;
+    }
+
+    const deductionConfigs = compensationConfig.deductionConfigs;
+
+    // Priority 1: Check Worker Group configuration
+    if (worker.workerGroup) {
+      const groupConfig = deductionConfigs.find(
+        c => c.configType === 'group' &&
+        c.group && c.group.toString() === worker.workerGroup.toString()
+      );
+      if (groupConfig) return groupConfig;
+    }
+
+    // Priority 2: Check Job Band configuration
+    if (worker.jobBand) {
+      const bandConfig = deductionConfigs.find(
+        c => c.configType === 'band' &&
+        c.jobBand && c.jobBand.toString() === worker.jobBand.toString()
+      );
+      if (bandConfig) return bandConfig;
+    }
+
+    return null;
+  }
+
+  // Helper: Get active loans/advances for worker with pending installments
+  async getActiveLoansForPayroll(workerId, periodEnd) {
+    const activeLoans = await Loan.find({
+      worker: workerId,
+      status: 'active',
+      remainingAmount: { $gt: 0 }
+    });
+
+    const loanDeductions = [];
+
+    for (const loan of activeLoans) {
+      // Find the next pending installment due within or before this period
+      let deductionAmount = 0;
+
+      if (loan.hasInstallments && loan.installments.length > 0) {
+        // Find pending installments due on or before periodEnd
+        const pendingInstallment = loan.installments.find(
+          inst => inst.status === 'pending' && new Date(inst.dueDate) <= new Date(periodEnd)
+        );
+        if (pendingInstallment) {
+          deductionAmount = pendingInstallment.amount - (pendingInstallment.paidAmount || 0);
+        }
+      } else {
+        // No installments - deduct remaining amount (or full if advance)
+        if (loan.category === 'advance') {
+          // Advances typically deducted in full
+          deductionAmount = loan.remainingAmount;
+        } else {
+          // For loans without installments, use installmentAmount if set
+          deductionAmount = loan.installmentAmount || loan.remainingAmount;
+        }
+      }
+
+      if (deductionAmount > 0) {
+        loanDeductions.push({
+          loanId: loan._id,
+          loanCode: loan.loanId,
+          category: loan.category,
+          description: loan.description || (loan.category === 'advance' ? 'Salary Advance' : 'Loan Repayment'),
+          amount: Math.min(deductionAmount, loan.remainingAmount),
+          remainingAfter: Math.max(0, loan.remainingAmount - deductionAmount)
+        });
+      }
+    }
+
+    return loanDeductions;
+  }
+
   // Custom method: Generate payroll based on payment type
   async generatePayroll(workerId, periodStart, periodEnd, params) {
     const worker = await Worker.findById(workerId).populate('company');
@@ -77,55 +157,118 @@ class PayrollRecords extends Service {
         throw new Error(`Unsupported payment type: ${paymentType}`);
     }
 
-    let grossPay = payrollCalc.grossPay;
+    let grossPay = payrollCalc.grossPay || 0;
+
+    // Safely access payrollInfo
+    const payrollInfo = worker.payrollInfo || {};
 
     // Process allowances
-    const allowances = worker.payrollInfo.allowances || [];
+    const allowances = payrollInfo.allowances || [];
     let totalAllowances = 0;
 
     for (const allowance of allowances) {
       if (allowance.type === 'fixed') {
-        totalAllowances += allowance.amount;
+        totalAllowances += allowance.amount || 0;
       } else if (allowance.type === 'percentage') {
-        totalAllowances += (grossPay * allowance.amount) / 100;
+        totalAllowances += (grossPay * (allowance.amount || 0)) / 100;
       }
     }
 
     grossPay += totalAllowances;
 
-    // Calculate statutory deductions based on payment type
+    // Calculate monthly wage for statutory deductions
     let monthlyWage;
     if (paymentType === 'monthly-salary') {
-      monthlyWage = worker.payrollInfo.monthlySalary || 0;
+      monthlyWage = payrollInfo.monthlySalary || 0;
     } else if (paymentType === 'hourly') {
-      monthlyWage = hourlyToMonthly(worker.payrollInfo.hourlyRate);
+      monthlyWage = hourlyToMonthly(payrollInfo.hourlyRate || 0);
     } else {
-      // For unit-based, use gross pay as monthly wage
       monthlyWage = grossPay;
     }
 
-    const statutory = calculateStatutoryDeductions(monthlyWage, {
-      epfEnabled: company.payrollSettings?.epfEnabled !== false,
-      socsoEnabled: company.payrollSettings?.socsoEnabled !== false,
-      eisEnabled: company.payrollSettings?.eisEnabled !== false
-    });
+    // Get deduction configuration from Compensation settings (Group priority > Job Band)
+    const deductionConfig = await this.getDeductionConfig(worker, company._id);
 
-    // Process other deductions
-    const deductions = worker.payrollInfo.deductions || [];
-    let otherDeductions = 0;
+    // Calculate statutory deductions with custom rates if available
+    let epf, socso, eis;
 
-    for (const deduction of deductions) {
+    if (deductionConfig) {
+      // Use custom rates from deduction configuration
+      epf = deductionConfig.epfEnabled !== false ? {
+        employee: Math.round(monthlyWage * (deductionConfig.epfEmployeeRate || 11) / 100 * 100) / 100,
+        employer: Math.round(monthlyWage * (deductionConfig.epfEmployerRate || 12) / 100 * 100) / 100,
+        total: 0
+      } : { employee: 0, employer: 0, total: 0 };
+      epf.total = epf.employee + epf.employer;
+
+      socso = deductionConfig.socsoEnabled !== false ? {
+        employee: Math.round(monthlyWage * (deductionConfig.socsoEmployeeRate || 0.5) / 100 * 100) / 100,
+        employer: Math.round(monthlyWage * (deductionConfig.socsoEmployerRate || 1.75) / 100 * 100) / 100,
+        total: 0
+      } : { employee: 0, employer: 0, total: 0 };
+      socso.total = socso.employee + socso.employer;
+
+      eis = deductionConfig.eisEnabled !== false ? {
+        employee: Math.round(monthlyWage * (deductionConfig.eisEmployeeRate || 0.2) / 100 * 100) / 100,
+        employer: Math.round(monthlyWage * (deductionConfig.eisEmployerRate || 0.2) / 100 * 100) / 100,
+        total: 0
+      } : { employee: 0, employer: 0, total: 0 };
+      eis.total = eis.employee + eis.employer;
+    } else {
+      // Use default statutory calculations
+      const statutory = calculateStatutoryDeductions(monthlyWage, {
+        epfEnabled: company.payrollSettings?.epfEnabled !== false,
+        socsoEnabled: company.payrollSettings?.socsoEnabled !== false,
+        eisEnabled: company.payrollSettings?.eisEnabled !== false
+      });
+      epf = statutory.epf;
+      socso = statutory.socso;
+      eis = statutory.eis;
+    }
+
+    // Get custom deductions from configuration
+    const customDeductions = deductionConfig?.customDeductions || [];
+    let customDeductionTotal = 0;
+    const processedCustomDeductions = [];
+
+    for (const deduction of customDeductions) {
+      let amount = 0;
       if (deduction.type === 'fixed') {
-        otherDeductions += deduction.amount;
+        amount = deduction.amount || 0;
       } else if (deduction.type === 'percentage') {
-        otherDeductions += (grossPay * deduction.amount) / 100;
+        amount = Math.round(grossPay * (deduction.amount || 0) / 100 * 100) / 100;
+      }
+      customDeductionTotal += amount;
+      processedCustomDeductions.push({
+        name: deduction.name,
+        description: deduction.description,
+        amount,
+        type: deduction.type
+      });
+    }
+
+    // Get loans and advances for deduction
+    const loanDeductions = await this.getActiveLoansForPayroll(workerId, new Date(periodEnd));
+    const totalLoanDeduction = loanDeductions.reduce((sum, l) => sum + l.amount, 0);
+
+    // Process worker's individual deductions (from payrollInfo)
+    const workerDeductions = payrollInfo.deductions || [];
+    let workerDeductionTotal = 0;
+
+    for (const deduction of workerDeductions) {
+      if (deduction.type === 'fixed') {
+        workerDeductionTotal += deduction.amount || 0;
+      } else if (deduction.type === 'percentage') {
+        workerDeductionTotal += (grossPay * (deduction.amount || 0)) / 100;
       }
     }
 
-    const totalDeductions = statutory.totalEmployee + otherDeductions;
+    // Calculate totals
+    const statutoryEmployeeTotal = (epf?.employee || 0) + (socso?.employee || 0) + (eis?.employee || 0);
+    const totalDeductions = statutoryEmployeeTotal + customDeductionTotal + workerDeductionTotal + totalLoanDeduction;
     const netPay = Math.round((grossPay - totalDeductions) * 100) / 100;
 
-    // Create payroll record with payment type specific data
+    // Create payroll record
     const payrollData = {
       company: company._id,
       worker: workerId,
@@ -136,31 +279,51 @@ class PayrollRecords extends Service {
       // Common fields
       allowances,
       totalAllowances,
+      grossPay: Math.round(grossPay * 100) / 100,
+
+      // Statutory deductions with custom rates
       epf: {
-        employeeContribution: statutory.epf.employee,
-        employerContribution: statutory.epf.employer,
-        totalContribution: statutory.epf.total
+        employeeContribution: epf?.employee || 0,
+        employerContribution: epf?.employer || 0,
+        totalContribution: epf?.total || 0
       },
       socso: {
-        employeeContribution: statutory.socso.employee,
-        employerContribution: statutory.socso.employer,
-        totalContribution: statutory.socso.total
+        employeeContribution: socso?.employee || 0,
+        employerContribution: socso?.employer || 0,
+        totalContribution: socso?.total || 0
       },
       eis: {
-        employeeContribution: statutory.eis.employee,
-        employerContribution: statutory.eis.employer,
-        totalContribution: statutory.eis.total
+        employeeContribution: eis?.employee || 0,
+        employerContribution: eis?.employer || 0,
+        totalContribution: eis?.total || 0
       },
-      deductions,
-      totalDeductions,
+
+      // Deduction configuration used
+      deductionConfigType: deductionConfig ? deductionConfig.configType : null,
+      deductionConfigSource: deductionConfig ?
+        (deductionConfig.configType === 'group' ? deductionConfig.groupName : deductionConfig.jobBandName) : null,
+
+      // Custom deductions from compensation config
+      customDeductions: processedCustomDeductions,
+      totalCustomDeductions: customDeductionTotal,
+
+      // Worker's individual deductions
+      deductions: workerDeductions,
+
+      // Loan and Advance deductions
+      loanDeductions,
+      totalLoanDeductions: totalLoanDeduction,
+
+      // Totals
+      totalDeductions: Math.round(totalDeductions * 100) / 100,
       netPay,
       status: 'draft',
       paymentStatus: 'pending',
       createdBy: params.user._id,
       bankDetails: {
-        bankName: worker.payrollInfo.bankName,
-        accountNumber: worker.payrollInfo.bankAccountNumber,
-        accountHolderName: worker.payrollInfo.bankAccountName
+        bankName: payrollInfo.bankName || '',
+        accountNumber: payrollInfo.bankAccountNumber || '',
+        accountHolderName: payrollInfo.bankAccountName || ''
       },
 
       // Payment type specific fields

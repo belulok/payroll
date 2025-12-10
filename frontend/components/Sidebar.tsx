@@ -26,6 +26,7 @@ import {
   ChevronDownIcon,
   BriefcaseIcon,
   BanknotesIcon,
+  AdjustmentsHorizontalIcon,
 } from '@heroicons/react/24/outline';
 
 interface MenuItem {
@@ -55,8 +56,9 @@ const adminMenuItems: MenuItem[] = [
   { name: 'QR & Attendance', href: '/dashboard/qr-attendance', icon: QrCodeIcon },
   { name: 'Timesheets', href: '/dashboard/timesheets', icon: ClockIcon },
   { name: 'Payroll', href: '/dashboard/payroll', icon: CurrencyDollarIcon },
-  { name: 'Loans', href: '/dashboard/loans', icon: BanknotesIcon },
+  { name: 'Financing', href: '/dashboard/loans', icon: BanknotesIcon },
   { name: 'Invoices', href: '/dashboard/invoices', icon: DocumentTextIcon },
+  { name: 'Compensation', href: '/dashboard/compensation', icon: AdjustmentsHorizontalIcon },
   { name: 'Leave Requests', href: '/dashboard/leave-requests', icon: CalendarDaysIcon },
   { name: 'Holidays', href: '/dashboard/holidays', icon: CalendarIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
@@ -454,31 +456,15 @@ export default function Sidebar() {
         </nav>
 
         {/* Desktop Footer */}
-        <div className="p-4 border-t border-indigo-500 relative">
-          <div
-            className={`flex items-center ${
-              isCollapsed ? 'justify-center' : 'space-x-3'
-            } text-sm relative group cursor-pointer hover:bg-indigo-700 rounded-lg p-2 transition-colors`}
-            onMouseEnter={() => setShowUserMenu(true)}
-            onMouseLeave={() => setShowUserMenu(false)}
-          >
-            <div className="w-8 h-8 rounded-full bg-indigo-400 flex items-center justify-center font-bold uppercase shrink-0">
-              {user?.firstName?.[0] || user?.email?.[0] || 'U'}
-            </div>
-            {!isCollapsed && user && (
-              <div className="overflow-hidden flex-1">
-                <p className="font-medium truncate">
-                  {user.firstName && user.lastName
-                    ? `${user.firstName} ${user.lastName}`
-                    : user.email.split('@')[0]}
-                </p>
-                <p className="text-xs text-indigo-200 truncate">{user.email}</p>
-              </div>
-            )}
-
-            {/* Dropdown Menu */}
-            {showUserMenu && (
-              <div className={`absolute ${isCollapsed ? 'left-full ml-2' : 'bottom-full mb-2 left-0 right-0'} bg-white text-gray-900 rounded-lg shadow-xl overflow-hidden z-50 ${isCollapsed ? 'w-48' : 'w-full'}`}>
+        <div
+          className="p-4 border-t border-indigo-500 relative"
+          onMouseEnter={() => setShowUserMenu(true)}
+          onMouseLeave={() => setShowUserMenu(false)}
+        >
+          {/* Dropdown Menu - positioned above, inside the hover container */}
+          {showUserMenu && (
+            <div className={`absolute ${isCollapsed ? 'left-full bottom-0 ml-2' : 'bottom-full left-4 right-4 pb-2'} z-50`}>
+              <div className={`bg-white text-gray-900 rounded-lg shadow-xl overflow-hidden ${isCollapsed ? 'w-48' : 'w-full'}`}>
                 {/* User Info Header (only when collapsed) */}
                 {isCollapsed && user && (
                   <div className="px-4 py-3 border-b border-gray-200 bg-gray-50">
@@ -508,6 +494,27 @@ export default function Sidebar() {
                     <span>Logout</span>
                   </button>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* User Profile Trigger */}
+          <div
+            className={`flex items-center ${
+              isCollapsed ? 'justify-center' : 'space-x-3'
+            } text-sm relative group cursor-pointer hover:bg-indigo-700 rounded-lg p-2 transition-colors`}
+          >
+            <div className="w-8 h-8 rounded-full bg-indigo-400 flex items-center justify-center font-bold uppercase shrink-0">
+              {user?.firstName?.[0] || user?.email?.[0] || 'U'}
+            </div>
+            {!isCollapsed && user && (
+              <div className="overflow-hidden flex-1">
+                <p className="font-medium truncate">
+                  {user.firstName && user.lastName
+                    ? `${user.firstName} ${user.lastName}`
+                    : user.email.split('@')[0]}
+                </p>
+                <p className="text-xs text-indigo-200 truncate">{user.email}</p>
               </div>
             )}
           </div>

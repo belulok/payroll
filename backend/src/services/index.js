@@ -15,9 +15,11 @@ const positions = require('./positions/positions.service.js');
 const departments = require('./departments/departments.service.js');
 const jobBands = require('./job-bands/job-bands.service.js');
 const jobGrades = require('./job-grades/job-grades.service.js');
+const workerGroups = require('./worker-groups/worker-groups.service.js');
 const tasks = require('./tasks/tasks.service.js');
 const loans = require('./loans/loans.service.js');
 const invoices = require('./invoices/invoices.service.js');
+const compensationConfigs = require('./compensation-configs/compensation-configs.service.js');
 
 module.exports = function (app) {
   app.configure(users);
@@ -28,9 +30,11 @@ module.exports = function (app) {
   app.configure(positions);
   app.configure(jobBands);
   app.configure(jobGrades);
+  app.configure(workerGroups);
   app.configure(tasks);
   app.configure(loans);
   app.configure(invoices);
+  app.configure(compensationConfigs);
   app.configure(workers);
   app.configure(timesheets);
   app.configure(payrollRecords);

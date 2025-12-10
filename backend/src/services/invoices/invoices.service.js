@@ -2,6 +2,7 @@ const createService = require('feathers-mongoose');
 const createModel = require('../../models/invoice.model');
 const hooks = require('./invoices.hooks');
 const InvoicesService = require('./invoices.class');
+const { authenticate } = require('@feathersjs/authentication').hooks;
 
 module.exports = function (app) {
   const options = {
@@ -23,6 +24,15 @@ module.exports = function (app) {
       return await invoicesService.generateInvoice(data, params);
     }
   });
+
+	  // Protect the custom generate endpoint with JWT auth so that
+	  // `params.user` is populated when calling `generateInvoice`.
+	  const generateService = app.service('invoices/generate');
+	  generateService.hooks({
+	    before: {
+	      all: [authenticate('jwt')]
+	    }
+	  });
 
   service.hooks(hooks);
 };

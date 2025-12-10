@@ -38,6 +38,24 @@ const projectSchema = new mongoose.Schema({
     enum: ['planning', 'active', 'on-hold', 'completed', 'cancelled'],
     default: 'active'
   },
+  // Multiple locations support
+  locations: [{
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+    street: String,
+    city: String,
+    state: String,
+    postcode: String,
+    country: { type: String, default: 'Malaysia' },
+    isDefault: {
+      type: Boolean,
+      default: false
+    }
+  }],
+  // Keep legacy single location for backward compatibility
   location: {
     street: String,
     city: String,

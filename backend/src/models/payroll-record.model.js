@@ -80,14 +80,23 @@ const payrollRecordSchema = new mongoose.Schema({
     min: 0
   },
 
-  // Rate information
+  // Rate information (for hourly payment type)
   hourlyRate: {
     type: Number,
-    required: true,
     min: 0
   },
   ot1_5Rate: Number,
   ot2_0Rate: Number,
+
+  // Unit-based rate information
+  unitRates: [{
+    unitType: String,
+    ratePerUnit: Number,
+    quantity: Number,
+    totalAmount: Number
+  }],
+  totalUnits: Number,
+  totalUnitAmount: Number,
 
   // Gross pay calculation
   normalPay: {
@@ -179,7 +188,30 @@ const payrollRecordSchema = new mongoose.Schema({
     }
   },
 
-  // Other deductions
+  // Deduction configuration source
+  deductionConfigType: {
+    type: String,
+    enum: ['group', 'band', null]
+  },
+  deductionConfigSource: String, // Name of group or band
+
+  // Custom deductions from compensation config
+  customDeductions: [{
+    name: String,
+    description: String,
+    amount: Number,
+    type: {
+      type: String,
+      enum: ['fixed', 'percentage']
+    }
+  }],
+  totalCustomDeductions: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
+  // Worker's individual deductions
   deductions: [{
     name: String,
     amount: Number,
@@ -188,6 +220,29 @@ const payrollRecordSchema = new mongoose.Schema({
       enum: ['fixed', 'percentage']
     }
   }],
+
+  // Loan and Advance deductions
+  loanDeductions: [{
+    loanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'loans'
+    },
+    loanCode: String,
+    category: {
+      type: String,
+      enum: ['loan', 'advance']
+    },
+    description: String,
+    amount: Number,
+    remainingAfter: Number
+  }],
+  totalLoanDeductions: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+
+  // Total of all deductions
   totalDeductions: {
     type: Number,
     default: 0,

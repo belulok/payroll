@@ -32,6 +32,43 @@ const clientSchema = new mongoose.Schema({
     postcode: String,
     country: { type: String, default: 'Malaysia' }
   },
+
+  // Timesheet & Attendance Settings
+  timesheetSettings: {
+    // Minute increment for recording (1, 5, 6, 10, 15, 30, 60 minutes)
+    minuteIncrement: {
+      type: Number,
+      enum: [1, 5, 6, 10, 15, 30, 60],
+      default: 30
+    },
+    // How to round the hours
+    roundingMethod: {
+      type: String,
+      enum: ['nearest', 'up', 'down'],
+      default: 'nearest'
+    },
+    // Minimum hours per day
+    minHoursPerDay: {
+      type: Number,
+      default: 0
+    },
+    // Maximum hours per day
+    maxHoursPerDay: {
+      type: Number,
+      default: 24
+    },
+    // Allow overtime recording
+    allowOvertime: {
+      type: Boolean,
+      default: true
+    },
+    // Maximum OT hours per day
+    maxOTHoursPerDay: {
+      type: Number,
+      default: 4
+    }
+  },
+
   isActive: {
     type: Boolean,
     default: true

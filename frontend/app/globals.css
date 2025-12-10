@@ -43,3 +43,14 @@ body {
   scrollbar-color: rgba(99, 102, 241, 0.6) rgba(79, 70, 229, 0.3);
 }
 
+/* Hide scrollbar utility class for modals */
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Chrome, Safari and Opera */
+  }
+}

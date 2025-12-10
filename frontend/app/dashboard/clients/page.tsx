@@ -33,7 +33,26 @@ interface Client {
     postcode?: string;
     country?: string;
   };
+  timesheetSettings?: {
+    minuteIncrement: 1 | 5 | 6 | 10 | 15 | 30 | 60;
+    roundingMethod: 'nearest' | 'up' | 'down';
+    minHoursPerDay: number;
+    maxHoursPerDay: number;
+    allowOvertime: boolean;
+    maxOTHoursPerDay: number;
+  };
   isActive: boolean;
+}
+
+interface ProjectLocation {
+  _id?: string;
+  name: string;
+  street?: string;
+  city?: string;
+  state?: string;
+  postcode?: string;
+  country?: string;
+  isDefault?: boolean;
 }
 
 interface Project {
@@ -46,6 +65,7 @@ interface Project {
   startDate?: string;
   endDate?: string;
   status: 'planning' | 'active' | 'on-hold' | 'completed' | 'cancelled';
+  locations?: ProjectLocation[];
   location?: {
     street?: string;
     city?: string;
@@ -56,238 +76,439 @@ interface Project {
   isActive: boolean;
 }
 
-// Client Form Modal Component
-	function ClientFormModal({ client, onClose, onSave, currentUser, companies, selectedCompanyId }: {
-	  client: Client | null;
-	  onClose: () => void;
-	  onSave: (data: Partial<Client>) => void;
-	  currentUser: User | null;
-	  companies: Company[];
-	  selectedCompanyId?: string;
-	}) {
-	  const [formData, setFormData] = useState({
-	    name: client?.name || '',
-	    contactPerson: client?.contactPerson || '',
-	    email: client?.email || '',
-	    phone: client?.phone || '',
-	    address: {
-	      street: client?.address?.street || '',
-	      city: client?.address?.city || '',
-	      state: client?.address?.state || '',
-	      postcode: client?.address?.postcode || '',
-	      country: client?.address?.country || 'Malaysia'
+// Client Form Modal Component with Tabs
+function ClientFormModal({ client, onClose, onSave, currentUser, companies, selectedCompanyId }: {
+  client: Client | null;
+  onClose: () => void;
+  onSave: (data: Partial<Client>) => void;
+  currentUser: User | null;
+  companies: Company[];
+  selectedCompanyId?: string;
+}) {
+  const [activeTab, setActiveTab] = useState<'basic' | 'address' | 'timesheet'>('basic');
+  const [formData, setFormData] = useState({
+    name: client?.name || '',
+    contactPerson: client?.contactPerson || '',
+    email: client?.email || '',
+    phone: client?.phone || '',
+    address: {
+      street: client?.address?.street || '',
+      city: client?.address?.city || '',
+      state: client?.address?.state || '',
+      postcode: client?.address?.postcode || '',
+      country: client?.address?.country || 'Malaysia'
+    },
+    timesheetSettings: {
+	      minuteIncrement: client?.timesheetSettings?.minuteIncrement || 30,
+	      roundingMethod: client?.timesheetSettings?.roundingMethod || 'nearest',
+	      minHoursPerDay: client?.timesheetSettings?.minHoursPerDay || 0,
+	      maxHoursPerDay: client?.timesheetSettings?.maxHoursPerDay || 24,
+	      allowOvertime: client?.timesheetSettings?.allowOvertime !== false,
+	      maxOTHoursPerDay: client?.timesheetSettings?.maxOTHoursPerDay || 4
 	    },
-	    isActive: client?.isActive !== undefined ? client.isActive : true,
-	    company: client?.company || selectedCompanyId || ''
-	  });
+    isActive: client?.isActive !== undefined ? client.isActive : true,
+    company: client?.company || selectedCompanyId || ''
+  });
 
-	  const isAdminOrAgent = currentUser?.role === 'admin' || currentUser?.role === 'agent';
+  const isAdminOrAgent = currentUser?.role === 'admin' || currentUser?.role === 'agent';
 
-	  const handleSubmit = (e: React.FormEvent) => {
-	    e.preventDefault();
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
 
-	    const payload: Partial<Client> = { ...formData };
+    const payload: Partial<Client> = { ...formData };
 
-	    if (client) {
-	      // Editing existing client: do not allow changing company here
-	      delete (payload as any).company;
-	    } else {
-	      // Creating new client
-	      if (!isAdminOrAgent) {
-	        // For subcon-admin and other roles, rely on selectedCompany / backend rules
-	        delete (payload as any).company;
-	      } else {
-	        // Admin/Agent must choose a company
-	        if (!payload.company) {
-	          alert('Please select a company for this client.');
-	          return;
-	        }
-	      }
-	    }
+    if (client) {
+      delete (payload as any).company;
+    } else {
+      if (!isAdminOrAgent) {
+        delete (payload as any).company;
+      } else {
+        if (!payload.company) {
+          alert('Please select a company for this client.');
+          return;
+        }
+      }
+    }
 
-	    onSave(payload);
-	  };
+    onSave(payload);
+  };
+
+  const tabs = [
+    { id: 'basic', label: 'Basic Info', icon: '🏢' },
+    { id: 'address', label: 'Address', icon: '📍' },
+    { id: 'timesheet', label: 'Timesheet', icon: '⏱️' },
+  ];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">
+      <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white">
             {client ? 'Edit Client' : 'Add New Client'}
           </h2>
           <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            onClick={() => {
+              onClose();
+              setActiveTab('basic');
+            }}
+            className="text-white hover:text-indigo-100 transition-colors"
           >
-            <XMarkIcon className="h-6 w-6 text-gray-500" />
+            <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Basic Information */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Client Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="e.g., ABC Corporation"
-                />
-              </div>
+        {/* Tabs */}
+        <div className="border-b border-gray-200 bg-gray-50">
+          <nav className="flex -mb-px">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors ${
+                  activeTab === tab.id
+                    ? 'border-indigo-600 text-indigo-600 bg-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <span className="mr-1.5">{tab.icon}</span>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
-                <input
-                  type="text"
-                  value={formData.contactPerson}
-                  onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="e.g., John Doe"
-                />
-              </div>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <div className="p-6 space-y-4">
+            {/* Basic Info Tab */}
+            {activeTab === 'basic' && (
+              <div className="space-y-4">
+                {/* Company Assignment - only for admin/agent when creating */}
+                {isAdminOrAgent && !client && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                    <label className="block text-sm font-medium text-amber-800 mb-2">
+                      Company Assignment *
+                    </label>
+                    <select
+                      required
+                      value={formData.company}
+                      onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                      className="w-full px-3 py-2 border border-amber-300 rounded-lg focus:ring-2 focus:ring-amber-500 focus:border-transparent bg-white"
+                    >
+                      <option value="">-- Select Company --</option>
+                      {companies.map((company) => (
+                        <option key={company._id} value={company._id}>
+                          {company.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="contact@client.com"
-                />
-              </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Client Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g., ABC Corporation"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
-                <input
-                  type="tel"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="+60123456789"
-                />
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Contact Person</label>
+                    <input
+                      type="text"
+                      value={formData.contactPerson}
+                      onChange={(e) => setFormData({ ...formData, contactPerson: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="e.g., John Doe"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="contact@client.com"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Phone</label>
+                    <input
+                      type="tel"
+                      value={formData.phone}
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="+60123456789"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="flex items-center space-x-2 cursor-pointer mt-6">
+                      <input
+                        type="checkbox"
+                        checked={formData.isActive}
+                        onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Active Client</span>
+                    </label>
+                  </div>
+                </div>
               </div>
+            )}
+
+            {/* Address Tab */}
+            {activeTab === 'address' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Street Address</label>
+                    <input
+                      type="text"
+                      value={formData.address.street}
+                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, street: e.target.value } })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="123 Main Street"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={formData.address.city}
+                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="Kuala Lumpur"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
+                    <input
+                      type="text"
+                      value={formData.address.state}
+                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="Selangor"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Postcode</label>
+                    <input
+                      type="text"
+                      value={formData.address.postcode}
+                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, postcode: e.target.value } })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="50000"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                    <input
+                      type="text"
+                      value={formData.address.country}
+                      onChange={(e) => setFormData({ ...formData, address: { ...formData.address, country: e.target.value } })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      placeholder="Malaysia"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Timesheet Settings Tab */}
+            {activeTab === 'timesheet' && (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <p className="text-sm text-blue-700 mb-4">
+                    💡 Configure how timesheet hours are recorded and calculated for workers assigned to this client's projects.
+                  </p>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Time Increment
+                      </label>
+                      <select
+                        value={formData.timesheetSettings.minuteIncrement}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          timesheetSettings: { ...formData.timesheetSettings, minuteIncrement: parseInt(e.target.value) as 1 | 5 | 6 | 10 | 15 | 30 | 60 }
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      >
+                        <option value={1}>Every 1 minute</option>
+                        <option value={5}>Every 5 minutes</option>
+                        <option value={6}>Every 6 minutes (0.1 hr)</option>
+                        <option value={10}>Every 10 minutes</option>
+                        <option value={15}>Every 15 minutes (0.25 hr)</option>
+                        <option value={30}>Every 30 minutes (0.5 hr)</option>
+                        <option value={60}>Every 60 minutes (1 hr)</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">Minimum time unit for recording</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Rounding Method
+                      </label>
+                      <select
+                        value={formData.timesheetSettings.roundingMethod}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          timesheetSettings: { ...formData.timesheetSettings, roundingMethod: e.target.value as 'nearest' | 'up' | 'down' }
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      >
+                        <option value="nearest">Round to Nearest</option>
+                        <option value="up">Always Round Up</option>
+                        <option value="down">Always Round Down</option>
+                      </select>
+                      <p className="text-xs text-gray-500 mt-1">How to round actual time</p>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Max Normal Hours/Day
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="24"
+                        value={formData.timesheetSettings.maxHoursPerDay}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          timesheetSettings: { ...formData.timesheetSettings, maxHoursPerDay: parseInt(e.target.value) || 24 }
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Max OT Hours/Day
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="12"
+                        value={formData.timesheetSettings.maxOTHoursPerDay}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          timesheetSettings: { ...formData.timesheetSettings, maxOTHoursPerDay: parseInt(e.target.value) || 4 }
+                        })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 pt-4 border-t border-blue-200">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={formData.timesheetSettings.allowOvertime}
+                        onChange={(e) => setFormData({
+                          ...formData,
+                          timesheetSettings: { ...formData.timesheetSettings, allowOvertime: e.target.checked }
+                        })}
+                        className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">Allow Overtime Recording</span>
+                    </label>
+                  </div>
+                </div>
+
+                {/* Preview */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-2">Preview</h4>
+                  <p className="text-xs text-gray-600">
+                    Example: If worker clocks 8 hours 10 minutes (490 min), it will be recorded as{' '}
+                    <span className="font-bold text-indigo-600">
+                      {(() => {
+                        const totalMinutes = 490; // 8h 10m
+                        const increment = formData.timesheetSettings.minuteIncrement;
+                        let roundedMinutes;
+                        if (formData.timesheetSettings.roundingMethod === 'nearest') {
+                          roundedMinutes = Math.round(totalMinutes / increment) * increment;
+                        } else if (formData.timesheetSettings.roundingMethod === 'up') {
+                          roundedMinutes = Math.ceil(totalMinutes / increment) * increment;
+                        } else {
+                          roundedMinutes = Math.floor(totalMinutes / increment) * increment;
+                        }
+                        const hours = Math.floor(roundedMinutes / 60);
+                        const mins = roundedMinutes % 60;
+                        return `${hours}h ${mins}m (${(roundedMinutes / 60).toFixed(2)} hrs)`;
+                      })()}
+                    </span>
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Form Actions Footer */}
+          <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex justify-between items-center">
+            <div className="flex gap-2">
+              {activeTab !== 'basic' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tabOrder = ['basic', 'address', 'timesheet'] as const;
+                    const currentIdx = tabOrder.indexOf(activeTab);
+                    if (currentIdx > 0) setActiveTab(tabOrder[currentIdx - 1]);
+                  }}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                >
+                  ← Previous
+                </button>
+              )}
+              {activeTab !== 'timesheet' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const tabOrder = ['basic', 'address', 'timesheet'] as const;
+                    const currentIdx = tabOrder.indexOf(activeTab);
+                    if (currentIdx < tabOrder.length - 1) setActiveTab(tabOrder[currentIdx + 1]);
+                  }}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                >
+                  Next →
+                </button>
+              )}
             </div>
-          </div>
-
-	          {/* Company Assignment - only for admin/agent when creating */}
-	          {isAdminOrAgent && !client && (
-	            <div>
-	              <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Assignment</h3>
-	              <div className="grid grid-cols-1 gap-4">
-	                <div>
-	                  <label className="block text-sm font-medium text-gray-700 mb-1">
-	                    Company <span className="text-red-500">*</span>
-	                  </label>
-	                  <select
-	                    required
-	                    value={formData.company}
-	                    onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-	                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-	                  >
-	                    <option value="">-- Select Company --</option>
-	                    {companies.map((company) => (
-	                      <option key={company._id} value={company._id}>
-	                        {company.name}
-	                      </option>
-	                    ))}
-	                  </select>
-	                </div>
-	              </div>
-	            </div>
-	          )}
-
-          {/* Address */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Address</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Street</label>
-                <input
-                  type="text"
-                  value={formData.address.street}
-                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, street: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                <input
-                  type="text"
-                  value={formData.address.city}
-                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                <input
-                  type="text"
-                  value={formData.address.state}
-                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Postcode</label>
-                <input
-                  type="text"
-                  value={formData.address.postcode}
-                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, postcode: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                <input
-                  type="text"
-                  value={formData.address.country}
-                  onChange={(e) => setFormData({ ...formData, address: { ...formData.address, country: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  setActiveTab('basic');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
+              >
+                {client ? 'Update Client' : 'Create Client'}
+              </button>
             </div>
-          </div>
-
-          {/* Status */}
-          <div>
-            <label className="flex items-center space-x-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={formData.isActive}
-                onChange={(e) => setFormData({ ...formData, isActive: e.target.checked })}
-                className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-              />
-              <span className="text-sm font-medium text-gray-700">Active Client</span>
-            </label>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium"
-            >
-              {client ? 'Update Client' : 'Create Client'}
-            </button>
           </div>
         </form>
       </div>
@@ -295,13 +516,14 @@ interface Project {
   );
 }
 
-// Project Form Modal Component
+// Project Form Modal Component with Tabs and Multiple Locations
 function ProjectFormModal({ project, clients, onClose, onSave }: {
   project: Project | null;
   clients: Client[];
   onClose: () => void;
   onSave: (data: Partial<Project>) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<'basic' | 'locations'>('basic');
   const [formData, setFormData] = useState({
     name: project?.name || '',
     client: typeof project?.client === 'string' ? project.client : project?.client?._id || '',
@@ -310,212 +532,467 @@ function ProjectFormModal({ project, clients, onClose, onSave }: {
     startDate: project?.startDate ? new Date(project.startDate).toISOString().split('T')[0] : '',
     endDate: project?.endDate ? new Date(project.endDate).toISOString().split('T')[0] : '',
     status: project?.status || 'active' as const,
-    location: {
-      street: project?.location?.street || '',
-      city: project?.location?.city || '',
-      state: project?.location?.state || '',
-      postcode: project?.location?.postcode || '',
-      country: project?.location?.country || 'Malaysia'
-    }
+    locations: project?.locations || [] as ProjectLocation[]
   });
+
+  // New location form
+  const [newLocation, setNewLocation] = useState<ProjectLocation>({
+    name: '',
+    street: '',
+    city: '',
+    state: '',
+    postcode: '',
+    country: 'Malaysia',
+    isDefault: false
+  });
+  const [editingLocationIndex, setEditingLocationIndex] = useState<number | null>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    // Remove client field if it's empty (unassigned)
     const dataToSave = { ...formData };
     if (!dataToSave.client) {
       delete (dataToSave as any).client;
     }
-    console.log('📤 ProjectFormModal submitting data:', dataToSave);
-    console.log('📤 Client field value:', dataToSave.client);
+    // Ensure at least one location is marked as default
+    if (dataToSave.locations.length > 0 && !dataToSave.locations.some(l => l.isDefault)) {
+      dataToSave.locations[0].isDefault = true;
+    }
     onSave(dataToSave);
   };
 
+  const addLocation = () => {
+    if (!newLocation.name.trim()) {
+      alert('Location name is required');
+      return;
+    }
+    const locationToAdd = {
+      ...newLocation,
+      isDefault: formData.locations.length === 0 // First location is default
+    };
+    setFormData({
+      ...formData,
+      locations: [...formData.locations, locationToAdd]
+    });
+    setNewLocation({
+      name: '',
+      street: '',
+      city: '',
+      state: '',
+      postcode: '',
+      country: 'Malaysia',
+      isDefault: false
+    });
+  };
+
+  const updateLocation = (index: number) => {
+    const updated = [...formData.locations];
+    updated[index] = newLocation;
+    setFormData({ ...formData, locations: updated });
+    setEditingLocationIndex(null);
+    setNewLocation({
+      name: '',
+      street: '',
+      city: '',
+      state: '',
+      postcode: '',
+      country: 'Malaysia',
+      isDefault: false
+    });
+  };
+
+  const removeLocation = (index: number) => {
+    const updated = formData.locations.filter((_, i) => i !== index);
+    // If we removed the default, make the first one default
+    if (updated.length > 0 && !updated.some(l => l.isDefault)) {
+      updated[0].isDefault = true;
+    }
+    setFormData({ ...formData, locations: updated });
+  };
+
+  const setDefaultLocation = (index: number) => {
+    const updated = formData.locations.map((loc, i) => ({
+      ...loc,
+      isDefault: i === index
+    }));
+    setFormData({ ...formData, locations: updated });
+  };
+
+  const startEditLocation = (index: number) => {
+    setEditingLocationIndex(index);
+    setNewLocation({ ...formData.locations[index] });
+  };
+
+  const cancelEdit = () => {
+    setEditingLocationIndex(null);
+    setNewLocation({
+      name: '',
+      street: '',
+      city: '',
+      state: '',
+      postcode: '',
+      country: 'Malaysia',
+      isDefault: false
+    });
+  };
+
+  const tabs = [
+    { id: 'basic', label: 'Basic Info', icon: '📋' },
+    { id: 'locations', label: 'Locations', icon: '📍', badge: formData.locations.length },
+  ];
+
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-white border-b px-6 py-4 flex items-center justify-between">
-          <h2 className="text-2xl font-bold text-gray-900">
+      <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+        {/* Header */}
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 flex items-center justify-between">
+          <h2 className="text-xl font-bold text-white">
             {project ? 'Edit Project' : 'Add New Project'}
           </h2>
           <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+            onClick={() => {
+              onClose();
+              setActiveTab('basic');
+            }}
+            className="text-white hover:text-emerald-100 transition-colors"
           >
-            <XMarkIcon className="h-6 w-6 text-gray-500" />
+            <XMarkIcon className="h-6 w-6" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Basic Information */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Project Name <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="e.g., Office Building Construction"
-                />
-              </div>
+        {/* Tabs */}
+        <div className="border-b border-gray-200 bg-gray-50">
+          <nav className="flex -mb-px">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex-1 py-3 px-4 text-sm font-medium border-b-2 transition-colors flex items-center justify-center gap-2 ${
+                  activeTab === tab.id
+                    ? 'border-emerald-600 text-emerald-600 bg-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                <span>{tab.icon}</span>
+                {tab.label}
+                {tab.badge !== undefined && tab.badge > 0 && (
+                  <span className="bg-emerald-100 text-emerald-700 text-xs px-2 py-0.5 rounded-full">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+          </nav>
+        </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Client
-                </label>
-                <select
-                  value={formData.client}
-                  onChange={(e) => {
-                    console.log('🎯 Client dropdown changed to:', e.target.value);
-                    setFormData({ ...formData, client: e.target.value });
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="">Unassigned</option>
-                  {clients.filter(c => c.isActive).map((client) => (
-                    <option key={client._id} value={client._id}>
-                      {client.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <div className="p-6 space-y-4">
+            {/* Basic Info Tab */}
+            {activeTab === 'basic' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Project Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={formData.name}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      placeholder="e.g., Office Building Construction"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Project Code</label>
-                <input
-                  type="text"
-                  value={formData.projectCode}
-                  onChange={(e) => setFormData({ ...formData, projectCode: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  placeholder="e.g., PRJ-2024-001"
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Client</label>
+                    <select
+                      value={formData.client}
+                      onChange={(e) => setFormData({ ...formData, client: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    >
+                      <option value="">Unassigned</option>
+                      {clients.filter(c => c.isActive).map((client) => (
+                        <option key={client._id} value={client._id}>
+                          {client.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
-                <textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                  rows={3}
-                  placeholder="Project description..."
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Project Code</label>
+                    <input
+                      type="text"
+                      value={formData.projectCode}
+                      onChange={(e) => setFormData({ ...formData, projectCode: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      placeholder="e.g., PRJ-2024-001"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
-                <input
-                  type="date"
-                  value={formData.startDate}
-                  onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
+                  <div className="col-span-2">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <textarea
+                      value={formData.description}
+                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                      rows={2}
+                      placeholder="Project description..."
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
-                <input
-                  type="date"
-                  value={formData.endDate}
-                  onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Start Date</label>
+                    <input
+                      type="date"
+                      value={formData.startDate}
+                      onChange={(e) => setFormData({ ...formData, startDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={formData.status}
-                  onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="planning">Planning</option>
-                  <option value="active">Active</option>
-                  <option value="on-hold">On Hold</option>
-                  <option value="completed">Completed</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">End Date</label>
+                    <input
+                      type="date"
+                      value={formData.endDate}
+                      onChange={(e) => setFormData({ ...formData, endDate: e.target.value })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                    <select
+                      value={formData.status}
+                      onChange={(e) => setFormData({ ...formData, status: e.target.value as any })}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    >
+                      <option value="planning">Planning</option>
+                      <option value="active">Active</option>
+                      <option value="on-hold">On Hold</option>
+                      <option value="completed">Completed</option>
+                      <option value="cancelled">Cancelled</option>
+                    </select>
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Locations Tab */}
+            {activeTab === 'locations' && (
+              <div className="space-y-4">
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                  <p className="text-sm text-blue-700">
+                    📍 Add multiple work locations for this project. These locations will be available for selection in timesheets and worker assignments.
+                  </p>
+                </div>
+
+                {/* Existing Locations */}
+                {formData.locations.length > 0 && (
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-semibold text-gray-700">Project Locations ({formData.locations.length})</h4>
+                    {formData.locations.map((loc, index) => (
+                      <div
+                        key={index}
+                        className={`border rounded-lg p-3 ${loc.isDefault ? 'border-emerald-300 bg-emerald-50' : 'border-gray-200 bg-white'}`}
+                      >
+                        <div className="flex items-start justify-between">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-gray-900">{loc.name}</span>
+                              {loc.isDefault && (
+                                <span className="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded">Default</span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1">
+                              {[loc.street, loc.city, loc.state, loc.postcode, loc.country].filter(Boolean).join(', ') || 'No address specified'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            {!loc.isDefault && (
+                              <button
+                                type="button"
+                                onClick={() => setDefaultLocation(index)}
+                                className="p-1 text-gray-400 hover:text-emerald-600 text-xs"
+                                title="Set as default"
+                              >
+                                ⭐
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => startEditLocation(index)}
+                              className="p-1 text-gray-400 hover:text-blue-600"
+                              title="Edit"
+                            >
+                              <PencilIcon className="h-4 w-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => removeLocation(index)}
+                              className="p-1 text-gray-400 hover:text-red-600"
+                              title="Remove"
+                            >
+                              <TrashIcon className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add/Edit Location Form */}
+                <div className="border border-dashed border-gray-300 rounded-lg p-4 bg-gray-50">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                    {editingLocationIndex !== null ? '✏️ Edit Location' : '➕ Add New Location'}
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">
+                        Location Name <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={newLocation.name}
+                        onChange={(e) => setNewLocation({ ...newLocation, name: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        placeholder="e.g., Main Site, Block A, Ground Floor"
+                      />
+                    </div>
+
+                    <div className="col-span-2">
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Street</label>
+                      <input
+                        type="text"
+                        value={newLocation.street}
+                        onChange={(e) => setNewLocation({ ...newLocation, street: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        placeholder="Street address"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">City</label>
+                      <input
+                        type="text"
+                        value={newLocation.city}
+                        onChange={(e) => setNewLocation({ ...newLocation, city: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        placeholder="City"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">State</label>
+                      <input
+                        type="text"
+                        value={newLocation.state}
+                        onChange={(e) => setNewLocation({ ...newLocation, state: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        placeholder="State"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Postcode</label>
+                      <input
+                        type="text"
+                        value={newLocation.postcode}
+                        onChange={(e) => setNewLocation({ ...newLocation, postcode: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        placeholder="Postcode"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-600 mb-1">Country</label>
+                      <input
+                        type="text"
+                        value={newLocation.country}
+                        onChange={(e) => setNewLocation({ ...newLocation, country: e.target.value })}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent text-sm"
+                        placeholder="Country"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="flex gap-2 mt-4">
+                    {editingLocationIndex !== null ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => updateLocation(editingLocationIndex)}
+                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium"
+                        >
+                          Update Location
+                        </button>
+                        <button
+                          type="button"
+                          onClick={cancelEdit}
+                          className="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-100 text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={addLocation}
+                        className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 text-sm font-medium"
+                      >
+                        + Add Location
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Location */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Location</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 mb-1">Street</label>
-                <input
-                  type="text"
-                  value={formData.location.street}
-                  onChange={(e) => setFormData({ ...formData, location: { ...formData.location, street: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">City</label>
-                <input
-                  type="text"
-                  value={formData.location.city}
-                  onChange={(e) => setFormData({ ...formData, location: { ...formData.location, city: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">State</label>
-                <input
-                  type="text"
-                  value={formData.location.state}
-                  onChange={(e) => setFormData({ ...formData, location: { ...formData.location, state: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Postcode</label>
-                <input
-                  type="text"
-                  value={formData.location.postcode}
-                  onChange={(e) => setFormData({ ...formData, location: { ...formData.location, postcode: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                <input
-                  type="text"
-                  value={formData.location.country}
-                  onChange={(e) => setFormData({ ...formData, location: { ...formData.location, country: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                />
-              </div>
+          {/* Form Actions Footer */}
+          <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex justify-between items-center">
+            <div className="flex gap-2">
+              {activeTab === 'locations' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('basic')}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                >
+                  ← Previous
+                </button>
+              )}
+              {activeTab === 'basic' && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('locations')}
+                  className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100"
+                >
+                  Next →
+                </button>
+              )}
             </div>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-4 border-t">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium"
-            >
-              {project ? 'Update Project' : 'Create Project'}
-            </button>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  onClose();
+                  setActiveTab('basic');
+                }}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+              >
+                {project ? 'Update Project' : 'Create Project'}
+              </button>
+            </div>
           </div>
         </form>
       </div>

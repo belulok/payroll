@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
-import { useCompany } from '@/contexts/CompanyContext';
 
 export interface Department {
   _id: string;
@@ -16,17 +15,18 @@ export interface Department {
   updatedAt?: string;
 }
 
-export function useDepartments(filters?: { isActive?: boolean }) {
-  const { selectedCompany } = useCompany();
-
+export function useDepartments(companyId?: string, filters?: { isActive?: boolean }) {
   return useQuery({
-    queryKey: ['departments', selectedCompany, filters],
+    queryKey: ['departments', companyId, filters],
     queryFn: async () => {
       const query: any = {
-        company: selectedCompany,
         $limit: 1000,
         $sort: { name: 1 }
       };
+
+      if (companyId) {
+        query.company = companyId;
+      }
 
       if (filters?.isActive !== undefined) {
         query.isActive = filters.isActive;
@@ -35,7 +35,6 @@ export function useDepartments(filters?: { isActive?: boolean }) {
       const response = await feathersClient.service('departments').find({ query });
       return response.data || response;
     },
-    enabled: !!selectedCompany,
   });
 }
 
@@ -43,7 +42,8 @@ export function useCreateDepartment() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Department>) => {
+    mutationFn: async (data: Partial<Department> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
       return await feathersClient.service('departments').create(data);
     },
     onSuccess: () => {
@@ -77,4 +77,3 @@ export function useDeleteDepartment() {
     },
   });
 }
-

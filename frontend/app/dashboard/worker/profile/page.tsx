@@ -37,14 +37,45 @@ export default function WorkerProfilePage() {
         return;
       }
 
-      // Fetch worker data (company info should be populated by backend)
+      // Fetch worker data
       if (currentUser.worker) {
         const workerData = await feathersClient.service('workers').get(currentUser.worker);
         setWorker(workerData);
 
-        // Company data should be populated in workerData.company by backend hooks
-        if (workerData.company && typeof workerData.company === 'object') {
-          setCompany(workerData.company);
+        // Try to get company from various sources
+        let companyData = null;
+
+        // 1. Check if company is already populated in workerData
+        if (workerData.company && typeof workerData.company === 'object' && workerData.company.name) {
+          companyData = workerData.company;
+        }
+
+        // 2. Try to get company ID and fetch it
+        if (!companyData) {
+          const companyId = typeof workerData.company === 'string'
+            ? workerData.company
+            : workerData.company?._id || currentUser.company;
+
+          if (companyId) {
+            try {
+              companyData = await feathersClient.service('companies').get(companyId);
+            } catch (e) {
+              console.log('Could not fetch company from worker.company:', e);
+
+              // 3. Last resort: try user's company
+              if (currentUser.company && currentUser.company !== companyId) {
+                try {
+                  companyData = await feathersClient.service('companies').get(currentUser.company);
+                } catch (e2) {
+                  console.log('Could not fetch company from user.company:', e2);
+                }
+              }
+            }
+          }
+        }
+
+        if (companyData) {
+          setCompany(companyData);
         }
       }
     } catch (error) {
@@ -113,7 +144,7 @@ export default function WorkerProfilePage() {
               <PhoneIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
               <div>
                 <p className="text-sm text-gray-600">Phone Number</p>
-                <p className="text-gray-900 font-medium">{worker?.phoneNumber || 'N/A'}</p>
+                <p className="text-gray-900 font-medium">{worker?.phone || 'N/A'}</p>
               </div>
             </div>
 
@@ -245,7 +276,7 @@ export default function WorkerProfilePage() {
               <BanknotesIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
               <div>
                 <p className="text-sm text-gray-600">Bank Name</p>
-                <p className="text-gray-900 font-medium">{worker?.bankName || 'N/A'}</p>
+                <p className="text-gray-900 font-medium">{worker?.payrollInfo?.bankName || 'N/A'}</p>
               </div>
             </div>
 
@@ -253,11 +284,54 @@ export default function WorkerProfilePage() {
               <IdentificationIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
               <div>
                 <p className="text-sm text-gray-600">Account Number</p>
-                <p className="text-gray-900 font-medium">{worker?.bankAccountNumber || 'N/A'}</p>
+                <p className="text-gray-900 font-medium">{worker?.payrollInfo?.bankAccountNumber || 'N/A'}</p>
+              </div>
+            </div>
+
+            <div className="flex items-start md:col-span-2">
+              <IdentificationIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
+              <div>
+                <p className="text-sm text-gray-600">Account Holder Name</p>
+                <p className="text-gray-900 font-medium">{worker?.payrollInfo?.bankAccountName || 'N/A'}</p>
               </div>
             </div>
           </div>
         </div>
+
+        {/* Emergency Contact */}
+        {(worker?.emergencyContact?.name || worker?.emergencyContact?.phone) && (
+          <div className="p-6 border-t">
+            <h3 className="text-xl font-semibold text-gray-900 mb-4 flex items-center">
+              <PhoneIcon className="h-6 w-6 mr-2 text-indigo-600" />
+              Emergency Contact
+            </h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex items-start">
+                <UserCircleIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
+                <div>
+                  <p className="text-sm text-gray-600">Contact Name</p>
+                  <p className="text-gray-900 font-medium">{worker?.emergencyContact?.name || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start">
+                <IdentificationIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
+                <div>
+                  <p className="text-sm text-gray-600">Relationship</p>
+                  <p className="text-gray-900 font-medium">{worker?.emergencyContact?.relationship || 'N/A'}</p>
+                </div>
+              </div>
+
+              <div className="flex items-start">
+                <PhoneIcon className="h-5 w-5 text-gray-400 mt-1 mr-3" />
+                <div>
+                  <p className="text-sm text-gray-600">Phone</p>
+                  <p className="text-gray-900 font-medium">{worker?.emergencyContact?.phone || 'N/A'}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

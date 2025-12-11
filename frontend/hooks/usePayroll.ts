@@ -43,27 +43,26 @@ interface PayrollRecord {
   };
 }
 
-export function usePayrollRecords(companyId: string | undefined) {
+export function usePayrollRecords(companyId?: string) {
   return useQuery({
     queryKey: ['payroll-records', companyId],
     queryFn: async () => {
-      if (!companyId) return [];
+      const query: any = {
+        $limit: 100,
+        $sort: { periodEnd: -1 }
+      };
 
-      const response = await feathersClient.service('payroll-records').find({
-        query: {
-          company: companyId,
-          $limit: 100,
-          $sort: { periodEnd: -1 }
-        }
-      });
+      if (companyId) {
+        query.company = companyId;
+      }
 
+      const response = await feathersClient.service('payroll-records').find({ query });
       return (response.data || response) as PayrollRecord[];
     },
-    enabled: !!companyId,
   });
 }
 
-export function useGeneratePayroll(companyId: string | undefined) {
+export function useGeneratePayroll() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -75,12 +74,12 @@ export function useGeneratePayroll(companyId: string | undefined) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payroll-records', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
     },
   });
 }
 
-export function useApprovePayroll(companyId: string | undefined) {
+export function useApprovePayroll() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -90,8 +89,7 @@ export function useApprovePayroll(companyId: string | undefined) {
       });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['payroll-records', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['payroll-records'] });
     },
   });
 }
-

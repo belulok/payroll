@@ -5,6 +5,7 @@ import { useCompany } from '@/contexts/CompanyContext';
 import { useLoans, useCreateLoan, useUpdateLoan, useDeleteLoan, type Loan } from '@/hooks/useLoans';
 import { useWorkers } from '@/hooks/useWorkers';
 import feathersClient from '@/lib/feathers';
+import { SignedImage } from '@/hooks/useSignedUrl';
 import {
   BanknotesIcon,
   PlusIcon,
@@ -34,9 +35,9 @@ export default function LoansPage() {
   // Use TanStack Query hooks
   const { data: loans = [], isLoading: loading } = useLoans(selectedCompany?._id);
   const { data: workers = [] } = useWorkers(selectedCompany?._id);
-  const createLoan = useCreateLoan(selectedCompany?._id);
-  const updateLoan = useUpdateLoan(selectedCompany?._id);
-  const deleteLoan = useDeleteLoan(selectedCompany?._id);
+  const createLoan = useCreateLoan();
+  const updateLoan = useUpdateLoan();
+  const deleteLoan = useDeleteLoan();
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [filter, setFilter] = useState<string>('all');
@@ -136,7 +137,12 @@ export default function LoansPage() {
           data: payload
         });
       } else {
-        await createLoan.mutateAsync(payload);
+        // Ensure company is set for create
+        const companyId = payload.company || selectedCompany?._id;
+        if (!companyId) {
+          throw new Error('Please select a company first');
+        }
+        await createLoan.mutateAsync({ ...payload, company: companyId });
       }
 
       setShowModal(false);
@@ -372,11 +378,19 @@ export default function LoansPage() {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="shrink-0 h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                          <span className="text-indigo-600 font-semibold">
-                            {worker?.firstName?.[0] || ''}{worker?.lastName?.[0] || ''}
-                          </span>
-                        </div>
+                        {worker?.profilePicture ? (
+                          <SignedImage
+                            src={worker.profilePicture}
+                            alt={`${worker.firstName} ${worker.lastName}`}
+                            className="shrink-0 h-10 w-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="shrink-0 h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                            <span className="text-indigo-600 font-semibold">
+                              {worker?.firstName?.[0] || ''}{worker?.lastName?.[0] || ''}
+                            </span>
+                          </div>
+                        )}
                         <div className="ml-4">
                           <div className="text-sm font-medium text-gray-900">
                             {worker?.firstName} {worker?.lastName}

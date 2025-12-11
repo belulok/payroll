@@ -1,5 +1,6 @@
 const { authenticate } = require('@feathersjs/authentication');
 const populateUser = require('../../hooks/populate-user');
+const { filterByCompany, verifyAgentAccess, setCompanyOnCreate } = require('../../hooks/filter-by-company');
 
 // Hook to create user account for new worker
 const createUserAccount = () => {
@@ -25,6 +26,26 @@ const createUserAccount = () => {
     };
 
     try {
+      // Check if user with this email already exists
+      const existingUsers = await app.service('users').find({
+        query: {
+          email: worker.email,
+          $limit: 1
+        },
+        provider: undefined // Internal call
+      });
+
+      if (existingUsers.total > 0) {
+        console.log(`User account already exists for email: ${worker.email}`);
+        // Link the existing user to this worker
+        const existingUser = existingUsers.data[0];
+        await app.service('workers').patch(worker._id, {
+          user: existingUser._id
+        }, { provider: undefined });
+        result.user = existingUser._id;
+        return context;
+      }
+
       const password = generatePassword();
 
       // Create user account
@@ -36,12 +57,12 @@ const createUserAccount = () => {
         role: 'worker',
         company: worker.company,
         worker: worker._id
-      });
+      }, { provider: undefined }); // Internal call
 
       // Update worker with user reference
       await app.service('workers').patch(worker._id, {
         user: user._id
-      });
+      }, { provider: undefined });
 
       // Add the generated password to the result so frontend can display it
       result.generatedPassword = password;
@@ -89,12 +110,10 @@ const populateReferences = () => {
 
           if (companyId) {
             console.log('[Workers Hook] Fetching company:', companyId);
-						// Use the same user context as the original workers request so
-						// company access checks pass, but treat this as an internal call
-						// (provider: undefined) so authentication is not re-run.
+						// Use a clean internal call without user context to bypass permission checks
 						const company = await app.service('companies').get(companyId, {
-							...params,
-							provider: undefined
+							provider: undefined,
+							query: {}
 						});
             record.company = {
               _id: company._id,
@@ -206,18 +225,18 @@ const populateReferences = () => {
 module.exports = {
   before: {
     all: [authenticate('jwt'), populateUser()],
-    find: [],
-    get: [],
-    create: [],
-    update: [],
-    patch: [],
-    remove: []
+    find: [filterByCompany()],
+    get: [filterByCompany()],
+    create: [setCompanyOnCreate()],
+    update: [filterByCompany()],
+    patch: [filterByCompany()],
+    remove: [filterByCompany()]
   },
 
   after: {
     all: [populateReferences()],
     find: [],
-    get: [],
+    get: [verifyAgentAccess()],
     create: [createUserAccount()],
     update: [],
     patch: [],

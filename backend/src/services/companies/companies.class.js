@@ -55,6 +55,20 @@ class Companies extends Service {
       }
     }
 
+    // Set approval status based on user role
+    if (params.user) {
+      if (params.user.role === 'agent') {
+        // Companies created by agents need approval
+        data.approvalStatus = 'pending';
+        data.agent = params.user._id;
+      } else if (params.user.role === 'admin') {
+        // Companies created by admin are auto-approved
+        data.approvalStatus = 'approved';
+        data.approvedBy = params.user._id;
+        data.approvedAt = new Date();
+      }
+    }
+
     return super.create(data, params);
   }
 

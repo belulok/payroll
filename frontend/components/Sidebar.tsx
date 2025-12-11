@@ -27,7 +27,9 @@ import {
   BriefcaseIcon,
   BanknotesIcon,
   AdjustmentsHorizontalIcon,
+  BellIcon,
 } from '@heroicons/react/24/outline';
+import NotificationBell from './NotificationBell';
 
 interface MenuItem {
   name: string;
@@ -49,6 +51,7 @@ interface User {
 // Admin, Agent, Subcon-Admin menu items
 const adminMenuItems: MenuItem[] = [
   { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+  { name: 'Users', href: '/dashboard/users', icon: UserCircleIcon },
   { name: 'Companies', href: '/dashboard/companies', icon: BuildingOfficeIcon },
   { name: 'Clients', href: '/dashboard/clients', icon: UsersIcon },
   { name: 'Organization', href: '/dashboard/organization', icon: BriefcaseIcon },
@@ -61,6 +64,7 @@ const adminMenuItems: MenuItem[] = [
   { name: 'Compensation', href: '/dashboard/compensation', icon: AdjustmentsHorizontalIcon },
   { name: 'Leave Requests', href: '/dashboard/leave-requests', icon: CalendarDaysIcon },
   { name: 'Holidays', href: '/dashboard/holidays', icon: CalendarIcon },
+  { name: 'Notifications', href: '/dashboard/notifications', icon: BellIcon },
   { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
 ];
 
@@ -99,7 +103,22 @@ export default function Sidebar() {
 
       return baseItems;
     }
-    return adminMenuItems;
+
+    // Admin users only see: Dashboard, Users, All Companies, Settings
+    if (user?.role === 'admin') {
+      return [
+        { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
+        { name: 'Users', href: '/dashboard/users', icon: UserCircleIcon },
+        { name: 'All Companies', href: '/dashboard/all-companies', icon: BuildingOfficeIcon },
+        { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
+      ];
+    }
+
+    // For other roles (agent, subcon-admin), show all menu items except Users
+    let items = [...adminMenuItems];
+    items = items.filter(item => item.name !== 'Users');
+
+    return items;
   };
 
   const menuItems = getMenuItems();
@@ -178,13 +197,16 @@ export default function Sidebar() {
           {/* Mobile Header */}
           <div className="flex items-center justify-between p-6 border-b border-indigo-500">
             <h2 className="text-2xl font-bold">Payroll System</h2>
-            <button
-              onClick={() => setIsMobileOpen(false)}
-              className="p-2 rounded-lg hover:bg-indigo-700 transition-colors"
-              aria-label="Close menu"
-            >
-              <XMarkIcon className="h-6 w-6" />
-            </button>
+            <div className="flex items-center gap-2">
+              <NotificationBell />
+              <button
+                onClick={() => setIsMobileOpen(false)}
+                className="p-2 rounded-lg hover:bg-indigo-700 transition-colors"
+                aria-label="Close menu"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
           </div>
 
           {/* Mobile Company Selector */}
@@ -321,17 +343,20 @@ export default function Sidebar() {
         {/* Desktop Header */}
         <div className="flex items-center justify-between p-4 border-b border-indigo-500">
           {!isCollapsed && <h2 className="text-xl font-bold">Payroll System</h2>}
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-2 rounded-lg hover:bg-indigo-700 transition-colors ml-auto"
-            aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {isCollapsed ? (
-              <ChevronRightIcon className="h-5 w-5" />
-            ) : (
-              <ChevronLeftIcon className="h-5 w-5" />
-            )}
-          </button>
+          <div className="flex items-center gap-1 ml-auto">
+            <NotificationBell />
+            <button
+              onClick={() => setIsCollapsed(!isCollapsed)}
+              className="p-2 rounded-lg hover:bg-indigo-700 transition-colors"
+              aria-label={isCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {isCollapsed ? (
+                <ChevronRightIcon className="h-5 w-5" />
+              ) : (
+                <ChevronLeftIcon className="h-5 w-5" />
+              )}
+            </button>
+          </div>
         </div>
 
         {/* Desktop Company Selector */}

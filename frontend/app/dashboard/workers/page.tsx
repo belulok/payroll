@@ -8,6 +8,19 @@ import { useProjects } from '@/hooks/useProjects';
 import { useCompanies } from '@/hooks/useCompanies';
 import { useJobBands } from '@/hooks/useJobBands';
 import { useWorkerGroups } from '@/hooks/useWorkerGroups';
+import { useDepartments } from '@/hooks/useDepartments';
+import {
+  useWorkerDocuments,
+  useCreateWorkerDocument,
+  useUpdateWorkerDocument,
+  useDeleteWorkerDocument,
+  documentTypeLabels,
+  documentStatusColors,
+  getDaysUntilExpiry,
+  WorkerDocument
+} from '@/hooks/useWorkerDocuments';
+import { useUpload, isImageFile, isFileSizeValid, getFileIcon } from '@/hooks/useUpload';
+import { SignedImage } from '@/hooks/useSignedUrl';
 import feathersClient from '@/lib/feathers';
 import {
   UserGroupIcon,
@@ -18,7 +31,13 @@ import {
   PencilIcon,
   ArchiveBoxIcon,
   XMarkIcon,
-  ArrowUturnLeftIcon
+  ArrowUturnLeftIcon,
+  DocumentIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
+  PhotoIcon,
+  ArrowUpTrayIcon,
+  PaperClipIcon
 } from '@heroicons/react/24/outline';
 
 interface User {
@@ -100,18 +119,50 @@ interface Worker {
   company?: string | Company;
   jobBand?: string | JobBand;
   workerGroup?: string | WorkerGroup;
+  profilePicture?: string;
+  profilePictureFileName?: string;
+  // Identification
+  icNumber?: string;
+  dateOfBirth?: string;
+  gender?: 'male' | 'female' | 'other';
+  nationality?: string;
+  // Passport
   passportNumber?: string;
   passportIssueDate?: string;
   passportExpiryDate?: string;
   passportCountry?: string;
+  // Employment
   paymentType: 'monthly-salary' | 'hourly' | 'unit-based';
   employmentStatus: string;
+  employmentType?: string;
+  joinDate?: string;
   isActive?: boolean;
+  // Payroll
   payrollInfo: {
     monthlySalary?: number;
     hourlyRate?: number;
     unitRates?: Array<{ unitType: string; ratePerUnit: number }>;
     currency: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+    bankAccountName?: string;
+    epfNumber?: string;
+    socsoNumber?: string;
+    taxNumber?: string;
+  };
+  // Address
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+  };
+  // Emergency Contact
+  emergencyContact?: {
+    name?: string;
+    relationship?: string;
+    phone?: string;
   };
   leaveTier?: string;
   user?: string;
@@ -149,10 +200,10 @@ export default function WorkersPage() {
 
   // Debug: Log workers data to see if population is working
   console.log('Workers data:', workers);
-  const createWorker = useCreateWorker(selectedCompany?._id);
-  const updateWorker = useUpdateWorker(selectedCompany?._id);
-  const archiveWorker = useArchiveWorker(selectedCompany?._id);
-  const unarchiveWorker = useUnarchiveWorker(selectedCompany?._id);
+  const createWorker = useCreateWorker();
+  const updateWorker = useUpdateWorker();
+  const archiveWorker = useArchiveWorker();
+  const unarchiveWorker = useUnarchiveWorker();
 
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [filter, setFilter] = useState<string>('all');
@@ -161,7 +212,22 @@ export default function WorkersPage() {
   const [editingWorker, setEditingWorker] = useState<Worker | null>(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [newPassword, setNewPassword] = useState<string>('');
-  const [activeFormTab, setActiveFormTab] = useState<'personal' | 'passport' | 'employment' | 'payment'>('personal');
+  const [activeFormTab, setActiveFormTab] = useState<'personal' | 'documents' | 'employment' | 'payment'>('personal');
+
+  // Document management state
+  const [showDocumentModal, setShowDocumentModal] = useState(false);
+  const [editingDocument, setEditingDocument] = useState<WorkerDocument | null>(null);
+  const [documentFormData, setDocumentFormData] = useState<Partial<WorkerDocument>>({
+    documentType: 'passport',
+    documentName: '',
+    documentNumber: '',
+    countryOfIssue: '',
+    issueDate: '',
+    expiryDate: '',
+    reminderEnabled: true,
+    notes: ''
+  });
+
   const [formData, setFormData] = useState<Partial<Worker>>({
     employeeId: '',
     firstName: '',
@@ -173,10 +239,18 @@ export default function WorkersPage() {
     paymentType: 'monthly-salary',
     employmentStatus: 'active',
     isActive: true,
+    company: selectedCompany?._id || '',
     payrollInfo: {
       currency: 'MYR'
     }
   });
+
+  // Update company in form when selectedCompany changes (and form is not in edit mode)
+  useEffect(() => {
+    if (selectedCompany?._id && !editingWorker) {
+      setFormData(prev => ({ ...prev, company: selectedCompany._id }));
+    }
+  }, [selectedCompany?._id, editingWorker]);
 
 	// Determine which company the form should use for dropdowns. For admin/agent,
 	// this is based on the company selected in the form (if any); otherwise we
@@ -194,6 +268,18 @@ export default function WorkersPage() {
 	const { data: formProjects = [] } = useProjects(formCompanyId);
 	const { data: jobBands = [] } = useJobBands({ isActive: true });
 	const { data: workerGroups = [] } = useWorkerGroups({ isActive: true });
+	const { data: departments = [] } = useDepartments(formCompanyId);
+
+  // Document hooks - only fetch when editing a worker
+  const { data: workerDocuments = [], refetch: refetchDocuments } = useWorkerDocuments(editingWorker?._id);
+  const createDocument = useCreateWorkerDocument(editingWorker?._id);
+  const updateDocument = useUpdateWorkerDocument(editingWorker?._id);
+  const deleteDocument = useDeleteWorkerDocument(editingWorker?._id);
+
+  // Upload hooks
+  const { uploadProfilePicture, uploadDocument, uploading: uploadingFile } = useUpload();
+  const [profilePicturePreview, setProfilePicturePreview] = useState<string | null>(null);
+  const [documentFilePreview, setDocumentFilePreview] = useState<{ name: string; url?: string } | null>(null);
 
   useEffect(() => {
     const fetchCurrentUser = async () => {
@@ -211,6 +297,8 @@ export default function WorkersPage() {
 
   const handleAddWorker = () => {
     setEditingWorker(null);
+    setProfilePicturePreview(null);
+    (window as any).__pendingProfilePicture = null;
     setFormData({
       employeeId: '',
       firstName: '',
@@ -222,7 +310,7 @@ export default function WorkersPage() {
       paymentType: 'monthly-salary',
       employmentStatus: 'active',
       isActive: true,
-      company: currentUser?.role === 'admin' ? '' : selectedCompany?._id,
+      company: selectedCompany?._id || '',
       payrollInfo: {
         currency: 'MYR'
       }
@@ -245,6 +333,7 @@ export default function WorkersPage() {
 	      project: matchingProject ? matchingProject._id : worker.project,
       company: typeof worker.company === 'string' ? worker.company : worker.company?._id,
 	    });
+	    setProfilePicturePreview(worker.profilePicture || null);
 	    setShowModal(true);
 	  };
 
@@ -305,7 +394,26 @@ export default function WorkersPage() {
 	          data: payload
         });
       } else {
-	        const result = await createWorker.mutateAsync(payload);
+        // Ensure company is set for create
+        const companyId = payload.company || selectedCompany?._id;
+        if (!companyId) {
+          throw new Error('Please select a company first');
+        }
+	        const result = await createWorker.mutateAsync({ ...payload, company: companyId });
+
+        // Upload pending profile picture if exists
+        const pendingPicture = (window as any).__pendingProfilePicture;
+        if (pendingPicture && result?._id) {
+          const uploadResult = await uploadProfilePicture(pendingPicture, result._id);
+          if (uploadResult.success) {
+            await updateWorker.mutateAsync({
+              id: result._id,
+              data: { profilePicture: uploadResult.url, profilePictureFileName: uploadResult.fileName }
+            });
+          }
+          (window as any).__pendingProfilePicture = null;
+        }
+
         // If a password was generated, show it to the user
         if (result && (result as any).generatedPassword) {
           setNewPassword((result as any).generatedPassword);
@@ -314,6 +422,7 @@ export default function WorkersPage() {
       }
       setShowModal(false);
       setEditingWorker(null);
+      setProfilePicturePreview(null);
       setFormData({
         employeeId: '',
         firstName: '',
@@ -583,11 +692,19 @@ export default function WorkersPage() {
                 <tr key={worker._id} className="hover:bg-gray-50">
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
-                      <div className="shrink-0 h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
-                        <span className="text-indigo-600 font-semibold">
-                          {worker.firstName?.[0] || ''}{worker.lastName?.[0] || ''}
-                        </span>
-                      </div>
+                      {worker.profilePicture ? (
+                        <SignedImage
+                          src={worker.profilePicture}
+                          alt={`${worker.firstName} ${worker.lastName}`}
+                          className="shrink-0 h-10 w-10 rounded-full object-cover"
+                        />
+                      ) : (
+                        <div className="shrink-0 h-10 w-10 bg-indigo-100 rounded-full flex items-center justify-center">
+                          <span className="text-indigo-600 font-semibold">
+                            {worker.firstName?.[0] || ''}{worker.lastName?.[0] || ''}
+                          </span>
+                        </div>
+                      )}
                       <div className="ml-4">
                         <div className="text-sm font-medium text-gray-900">
                           {worker.firstName} {worker.lastName}
@@ -747,7 +864,7 @@ export default function WorkersPage() {
               <nav className="flex -mb-px">
                 {[
                   { id: 'personal', label: 'Personal', icon: '👤' },
-                  { id: 'passport', label: 'Passport', icon: '🛂' },
+                  { id: 'documents', label: 'Documents', icon: '📄' },
                   { id: 'employment', label: 'Employment', icon: '💼' },
                   { id: 'payment', label: 'Payment', icon: '💰' },
                 ].map((tab) => (
@@ -795,6 +912,84 @@ export default function WorkersPage() {
                 {/* Personal Information Tab */}
                 {activeFormTab === 'personal' && (
                   <div className="space-y-4">
+                    {/* Profile Picture Upload */}
+                    <div className="flex items-start gap-6 pb-4 border-b border-gray-200">
+                      <div className="shrink-0">
+                        <div className="relative group">
+                          {(profilePicturePreview || formData.profilePicture) ? (
+                            <SignedImage
+                              src={profilePicturePreview || formData.profilePicture}
+                              alt="Profile"
+                              className="w-24 h-24 rounded-full object-cover border-4 border-white shadow-lg"
+                            />
+                          ) : (
+                            <div className="w-24 h-24 rounded-full bg-gradient-to-br from-indigo-100 to-indigo-200 flex items-center justify-center border-4 border-white shadow-lg">
+                              <PhotoIcon className="h-10 w-10 text-indigo-400" />
+                            </div>
+                          )}
+                          <label className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                            <ArrowUpTrayIcon className="h-6 w-6 text-white" />
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+
+                                if (!isImageFile(file)) {
+                                  alert('Please select an image file');
+                                  return;
+                                }
+                                if (!isFileSizeValid(file, 5)) {
+                                  alert('Image must be less than 5MB');
+                                  return;
+                                }
+
+                                // Show preview immediately
+                                const reader = new FileReader();
+                                reader.onload = (e) => {
+                                  setProfilePicturePreview(e.target?.result as string);
+                                };
+                                reader.readAsDataURL(file);
+
+                                // Upload if editing existing worker
+                                if (editingWorker?._id) {
+                                  const result = await uploadProfilePicture(file, editingWorker._id);
+                                  if (result.success && result.url) {
+                                    setFormData({ ...formData, profilePicture: result.url });
+                                  }
+                                } else {
+                                  // Store file for later upload after worker is created
+                                  (window as any).__pendingProfilePicture = file;
+                                }
+                              }}
+                            />
+                          </label>
+                        </div>
+                        <p className="text-xs text-gray-500 text-center mt-2">Click to upload</p>
+                      </div>
+                      <div className="flex-1">
+                        <h4 className="text-sm font-medium text-gray-700 mb-1">Profile Picture</h4>
+                        <p className="text-xs text-gray-500 mb-2">
+                          Upload a photo for this worker. Recommended: square image, at least 200x200 pixels.
+                        </p>
+                        {(profilePicturePreview || formData.profilePicture) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setProfilePicturePreview(null);
+                              setFormData({ ...formData, profilePicture: undefined, profilePictureFileName: undefined });
+                              (window as any).__pendingProfilePicture = null;
+                            }}
+                            className="text-xs text-red-600 hover:text-red-700"
+                          >
+                            Remove photo
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="col-span-2 sm:col-span-1">
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -858,63 +1053,382 @@ export default function WorkersPage() {
                         />
                       </div>
                     </div>
+
+                    {/* Identification Section */}
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Identification</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            IC Number
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.icNumber || ''}
+                            onChange={(e) => setFormData({ ...formData, icNumber: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            placeholder="e.g., 901234-56-7890"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Date of Birth
+                          </label>
+                          <input
+                            type="date"
+                            value={formData.dateOfBirth ? new Date(formData.dateOfBirth).toISOString().split('T')[0] : ''}
+                            onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Gender
+                          </label>
+                          <select
+                            value={formData.gender || ''}
+                            onChange={(e) => setFormData({ ...formData, gender: e.target.value as any })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Gender --</option>
+                            <option value="male">Male</option>
+                            <option value="female">Female</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Nationality
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.nationality || 'Malaysian'}
+                            onChange={(e) => setFormData({ ...formData, nationality: e.target.value })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Address Section */}
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Address</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Street Address
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address?.street || ''}
+                            onChange={(e) => setFormData({ ...formData, address: { ...formData.address, street: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            City
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address?.city || ''}
+                            onChange={(e) => setFormData({ ...formData, address: { ...formData.address, city: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            State
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address?.state || ''}
+                            onChange={(e) => setFormData({ ...formData, address: { ...formData.address, state: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Postcode
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address?.postcode || ''}
+                            onChange={(e) => setFormData({ ...formData, address: { ...formData.address, postcode: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Country
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.address?.country || 'Malaysia'}
+                            onChange={(e) => setFormData({ ...formData, address: { ...formData.address, country: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Bank Information Section */}
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Bank Information</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Bank Name
+                          </label>
+                          <select
+                            value={formData.payrollInfo?.bankName || ''}
+                            onChange={(e) => setFormData({ ...formData, payrollInfo: { ...formData.payrollInfo, bankName: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Bank --</option>
+                            <option value="Maybank">Maybank</option>
+                            <option value="CIMB">CIMB</option>
+                            <option value="Public Bank">Public Bank</option>
+                            <option value="RHB Bank">RHB Bank</option>
+                            <option value="Hong Leong Bank">Hong Leong Bank</option>
+                            <option value="AmBank">AmBank</option>
+                            <option value="Bank Islam">Bank Islam</option>
+                            <option value="Bank Rakyat">Bank Rakyat</option>
+                            <option value="OCBC">OCBC</option>
+                            <option value="UOB">UOB</option>
+                            <option value="HSBC">HSBC</option>
+                            <option value="Standard Chartered">Standard Chartered</option>
+                            <option value="Alliance Bank">Alliance Bank</option>
+                            <option value="Affin Bank">Affin Bank</option>
+                            <option value="BSN">BSN</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Account Number
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.payrollInfo?.bankAccountNumber || ''}
+                            onChange={(e) => setFormData({ ...formData, payrollInfo: { ...formData.payrollInfo, bankAccountNumber: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            placeholder="e.g., 1234567890"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Account Holder Name
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.payrollInfo?.bankAccountName || ''}
+                            onChange={(e) => setFormData({ ...formData, payrollInfo: { ...formData.payrollInfo, bankAccountName: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                            placeholder="Name as per bank account"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Emergency Contact Section */}
+                    <div className="mt-6 pt-4 border-t border-gray-200">
+                      <h4 className="text-sm font-semibold text-gray-800 mb-3">Emergency Contact</h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Contact Name
+                          </label>
+                          <input
+                            type="text"
+                            value={formData.emergencyContact?.name || ''}
+                            onChange={(e) => setFormData({ ...formData, emergencyContact: { ...formData.emergencyContact, name: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Relationship
+                          </label>
+                          <select
+                            value={formData.emergencyContact?.relationship || ''}
+                            onChange={(e) => setFormData({ ...formData, emergencyContact: { ...formData.emergencyContact, relationship: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          >
+                            <option value="">-- Select Relationship --</option>
+                            <option value="Spouse">Spouse</option>
+                            <option value="Parent">Parent</option>
+                            <option value="Sibling">Sibling</option>
+                            <option value="Child">Child</option>
+                            <option value="Friend">Friend</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        </div>
+                        <div className="col-span-2">
+                          <label className="block text-sm font-medium text-gray-700 mb-1">
+                            Contact Phone
+                          </label>
+                          <input
+                            type="tel"
+                            value={formData.emergencyContact?.phone || ''}
+                            onChange={(e) => setFormData({ ...formData, emergencyContact: { ...formData.emergencyContact, phone: e.target.value } })}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 )}
 
-                {/* Passport Information Tab */}
-                {activeFormTab === 'passport' && (
+                {/* Documents Tab */}
+                {activeFormTab === 'documents' && (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Passport Number
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.passportNumber || ''}
-                          onChange={(e) => setFormData({ ...formData, passportNumber: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                          placeholder="e.g., A12345678"
-                        />
+                    {!editingWorker ? (
+                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+                        <DocumentIcon className="h-12 w-12 text-blue-400 mx-auto mb-2" />
+                        <p className="text-blue-700 font-medium">Save the worker first</p>
+                        <p className="text-sm text-blue-600 mt-1">
+                          You can add documents after creating the worker record.
+                        </p>
                       </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Country of Issue
-                        </label>
-                        <input
-                          type="text"
-                          value={formData.passportCountry || ''}
-                          onChange={(e) => setFormData({ ...formData, passportCountry: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                          placeholder="e.g., Malaysia"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Issue Date
-                        </label>
-                        <input
-                          type="date"
-                          value={formData.passportIssueDate || ''}
-                          onChange={(e) => setFormData({ ...formData, passportIssueDate: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-1">
-                          Expiry Date
-                        </label>
-                        <input
-                          type="date"
-                          value={formData.passportExpiryDate || ''}
-                          onChange={(e) => setFormData({ ...formData, passportExpiryDate: e.target.value })}
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
-                      </div>
-                    </div>
-                    <p className="text-sm text-gray-500 mt-4">
-                      💡 Passport information is optional but recommended for foreign workers.
-                    </p>
+                    ) : (
+                      <>
+                        {/* Document List Header */}
+                        <div className="flex items-center justify-between">
+                          <h3 className="text-sm font-semibold text-gray-800">
+                            Worker Documents ({workerDocuments.length})
+                          </h3>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingDocument(null);
+                              setDocumentFormData({
+                                documentType: 'passport',
+                                documentName: '',
+                                documentNumber: '',
+                                countryOfIssue: '',
+                                issueDate: '',
+                                expiryDate: '',
+                                reminderEnabled: true,
+                                notes: ''
+                              });
+                              setShowDocumentModal(true);
+                            }}
+                            className="flex items-center gap-1 text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                          >
+                            <PlusIcon className="h-4 w-4" />
+                            Add Document
+                          </button>
+                        </div>
+
+                        {/* Document List */}
+                        {workerDocuments.length === 0 ? (
+                          <div className="bg-gray-50 border-2 border-dashed border-gray-200 rounded-lg p-6 text-center">
+                            <DocumentIcon className="h-10 w-10 text-gray-300 mx-auto mb-2" />
+                            <p className="text-gray-500">No documents added yet</p>
+                            <p className="text-xs text-gray-400 mt-1">
+                              Add passport, visa, work permit, and other documents
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {workerDocuments.map((doc: WorkerDocument) => {
+                              const daysUntil = getDaysUntilExpiry(doc.expiryDate);
+                              const statusColor = documentStatusColors[doc.status] || documentStatusColors.active;
+
+                              return (
+                                <div
+                                  key={doc._id}
+                                  className={`flex items-center justify-between p-3 rounded-lg border ${statusColor.border} ${statusColor.bg}`}
+                                >
+                                  <div className="flex items-center gap-3">
+                                    <div className={`p-2 rounded-lg ${doc.status === 'expired' ? 'bg-red-100' : doc.status === 'expiring-soon' ? 'bg-amber-100' : 'bg-white'}`}>
+                                      <DocumentIcon className={`h-5 w-5 ${statusColor.text}`} />
+                                    </div>
+                                    <div>
+                                      <div className="flex items-center gap-2">
+                                        <span className="font-medium text-gray-900">{doc.documentName}</span>
+                                        <span className={`text-xs px-2 py-0.5 rounded-full ${statusColor.bg} ${statusColor.text} border ${statusColor.border}`}>
+                                          {documentTypeLabels[doc.documentType]}
+                                        </span>
+                                        {doc.fileUrl && (
+                                          <a
+                                            href={doc.fileUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="text-xs text-emerald-600 hover:text-emerald-700 flex items-center gap-0.5"
+                                            onClick={(e) => e.stopPropagation()}
+                                          >
+                                            <PaperClipIcon className="h-3 w-3" />
+                                            View
+                                          </a>
+                                        )}
+                                      </div>
+                                      <div className="flex items-center gap-3 text-xs text-gray-500 mt-0.5">
+                                        {doc.documentNumber && <span>#{doc.documentNumber}</span>}
+                                        {doc.expiryDate && (
+                                          <span className={daysUntil !== null && daysUntil <= 7 ? 'text-red-600 font-medium' : ''}>
+                                            {daysUntil !== null ? (
+                                              daysUntil < 0 ? (
+                                                <span className="flex items-center gap-1">
+                                                  <ExclamationTriangleIcon className="h-3 w-3" />
+                                                  Expired {Math.abs(daysUntil)} days ago
+                                                </span>
+                                              ) : daysUntil === 0 ? 'Expires today' : (
+                                                `Expires in ${daysUntil} day${daysUntil !== 1 ? 's' : ''}`
+                                              )
+                                            ) : `Expires: ${new Date(doc.expiryDate).toLocaleDateString()}`}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setEditingDocument(doc);
+                                        setDocumentFormData({
+                                          documentType: doc.documentType,
+                                          documentName: doc.documentName,
+                                          documentNumber: doc.documentNumber || '',
+                                          countryOfIssue: doc.countryOfIssue || '',
+                                          issueDate: doc.issueDate ? doc.issueDate.split('T')[0] : '',
+                                          expiryDate: doc.expiryDate ? doc.expiryDate.split('T')[0] : '',
+                                          reminderEnabled: doc.reminderEnabled,
+                                          notes: doc.notes || ''
+                                        });
+                                        setShowDocumentModal(true);
+                                      }}
+                                      className="p-1.5 text-gray-500 hover:text-indigo-600 hover:bg-white rounded transition-colors"
+                                      title="Edit document"
+                                    >
+                                      <PencilIcon className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        if (confirm('Are you sure you want to delete this document?')) {
+                                          await deleteDocument.mutateAsync(doc._id);
+                                        }
+                                      }}
+                                      className="p-1.5 text-gray-500 hover:text-red-600 hover:bg-white rounded transition-colors"
+                                      title="Delete document"
+                                    >
+                                      <TrashIcon className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <p className="text-sm text-gray-500 mt-4">
+                          💡 Documents with expiry dates will trigger reminders based on system settings.
+                        </p>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -949,13 +1463,19 @@ export default function WorkersPage() {
                         <label className="block text-sm font-medium text-gray-700 mb-1">
                           Department *
                         </label>
-                        <input
-                          type="text"
+                        <select
                           required
                           value={formData.department || ''}
                           onChange={(e) => setFormData({ ...formData, department: e.target.value })}
                           className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                        />
+                        >
+                          <option value="">Select Department</option>
+                          {departments.map((dept: any) => (
+                            <option key={dept._id} value={dept.name}>
+                              {dept.name} {dept.code ? `(${dept.code})` : ''}
+                            </option>
+                          ))}
+                        </select>
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -1221,7 +1741,7 @@ export default function WorkersPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        const tabs = ['personal', 'passport', 'employment', 'payment'] as const;
+                        const tabs = ['personal', 'documents', 'employment', 'payment'] as const;
                         const currentIdx = tabs.indexOf(activeFormTab);
                         if (currentIdx > 0) setActiveFormTab(tabs[currentIdx - 1]);
                       }}
@@ -1234,7 +1754,7 @@ export default function WorkersPage() {
                     <button
                       type="button"
                       onClick={() => {
-                        const tabs = ['personal', 'passport', 'employment', 'payment'] as const;
+                        const tabs = ['personal', 'documents', 'employment', 'payment'] as const;
                         const currentIdx = tabs.indexOf(activeFormTab);
                         if (currentIdx < tabs.length - 1) setActiveFormTab(tabs[currentIdx + 1]);
                       }}
@@ -1305,6 +1825,281 @@ export default function WorkersPage() {
                 className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium"
               >
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Document Add/Edit Modal */}
+      {showDocumentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-emerald-600 to-teal-600 px-6 py-4 flex items-center justify-between">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <DocumentIcon className="h-6 w-6" />
+                {editingDocument ? 'Edit Document' : 'Add Document'}
+              </h2>
+              <button
+                onClick={() => setShowDocumentModal(false)}
+                className="text-white hover:text-emerald-100 transition-colors"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+
+            {/* Form */}
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Type *
+                  </label>
+                  <select
+                    required
+                    value={documentFormData.documentType}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, documentType: e.target.value as any })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  >
+                    {Object.entries(documentTypeLabels).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Name *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={documentFormData.documentName}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, documentName: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    placeholder="e.g., Malaysian Passport, Work Permit 2024"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Number
+                  </label>
+                  <input
+                    type="text"
+                    value={documentFormData.documentNumber}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, documentNumber: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    placeholder="e.g., A12345678"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Country of Issue
+                  </label>
+                  <input
+                    type="text"
+                    value={documentFormData.countryOfIssue}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, countryOfIssue: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    placeholder="e.g., Malaysia"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Issue Date
+                  </label>
+                  <input
+                    type="date"
+                    value={documentFormData.issueDate}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, issueDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Expiry Date
+                  </label>
+                  <input
+                    type="date"
+                    value={documentFormData.expiryDate}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, expiryDate: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Notes
+                  </label>
+                  <textarea
+                    value={documentFormData.notes}
+                    onChange={(e) => setDocumentFormData({ ...documentFormData, notes: e.target.value })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                    rows={2}
+                    placeholder="Any additional notes..."
+                  />
+                </div>
+
+                {/* File Upload Section */}
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Document File
+                  </label>
+                  <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 hover:border-emerald-400 transition-colors">
+                    {(documentFilePreview || documentFormData.fileUrl) ? (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 bg-emerald-100 rounded-lg">
+                            <PaperClipIcon className="h-5 w-5 text-emerald-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {documentFilePreview?.name || documentFormData.fileName || 'Uploaded file'}
+                            </p>
+                            {documentFormData.fileUrl && (
+                              <a
+                                href={documentFormData.fileUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-emerald-600 hover:underline"
+                              >
+                                View file
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDocumentFilePreview(null);
+                            setDocumentFormData({ ...documentFormData, fileUrl: undefined, fileName: undefined });
+                            (window as any).__pendingDocumentFile = null;
+                          }}
+                          className="p-1 text-gray-400 hover:text-red-500"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ) : (
+                      <label className="flex flex-col items-center cursor-pointer">
+                        <ArrowUpTrayIcon className="h-8 w-8 text-gray-400" />
+                        <span className="text-sm text-gray-600 mt-2">Click to upload document</span>
+                        <span className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, or images (max 10MB)</span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif,.webp"
+                          onChange={async (e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+
+                            if (!isFileSizeValid(file, 10)) {
+                              alert('File must be less than 10MB');
+                              return;
+                            }
+
+                            // Show preview
+                            setDocumentFilePreview({ name: file.name });
+
+                            // If editing existing document, upload now
+                            if (editingDocument?._id) {
+                              const result = await uploadDocument(file, editingWorker?._id, editingDocument._id);
+                              if (result.success && result.url) {
+                                setDocumentFormData({
+                                  ...documentFormData,
+                                  fileUrl: result.url,
+                                  fileName: result.fileName
+                                });
+                              }
+                            } else {
+                              // Store for later upload
+                              (window as any).__pendingDocumentFile = file;
+                            }
+                          }}
+                        />
+                      </label>
+                    )}
+                  </div>
+                </div>
+
+                <div className="col-span-2">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={documentFormData.reminderEnabled}
+                      onChange={(e) => setDocumentFormData({ ...documentFormData, reminderEnabled: e.target.checked })}
+                      className="rounded border-gray-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    <span className="text-sm text-gray-700">Enable expiry reminders</span>
+                  </label>
+                  <p className="text-xs text-gray-500 mt-1 ml-6">
+                    Reminders will be sent based on the system settings (e.g., 30 days, 7 days, 3 days before expiry)
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="border-t border-gray-200 bg-gray-50 px-6 py-4 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowDocumentModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={uploadingFile}
+                onClick={async () => {
+                  if (!documentFormData.documentName || !documentFormData.documentType) {
+                    alert('Please fill in required fields');
+                    return;
+                  }
+
+                  try {
+                    const payload = {
+                      ...documentFormData,
+                      worker: editingWorker?._id,
+                      company: selectedCompany?._id || (typeof editingWorker?.company === 'string' ? editingWorker.company : editingWorker?.company?._id)
+                    };
+
+                    let savedDoc: any;
+                    if (editingDocument) {
+                      savedDoc = await updateDocument.mutateAsync({ id: editingDocument._id, data: payload });
+                    } else {
+                      savedDoc = await createDocument.mutateAsync(payload);
+                    }
+
+                    // Upload pending file if exists
+                    const pendingFile = (window as any).__pendingDocumentFile;
+                    if (pendingFile && savedDoc?._id) {
+                      const uploadResult = await uploadDocument(pendingFile, editingWorker?._id, savedDoc._id);
+                      if (uploadResult.success) {
+                        await updateDocument.mutateAsync({
+                          id: savedDoc._id,
+                          data: { fileUrl: uploadResult.url, fileName: uploadResult.fileName }
+                        });
+                      }
+                      (window as any).__pendingDocumentFile = null;
+                    }
+
+                    setShowDocumentModal(false);
+                    setDocumentFilePreview(null);
+                    refetchDocuments();
+                  } catch (error) {
+                    console.error('Error saving document:', error);
+                    alert('Failed to save document');
+                  }
+                }}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium"
+              >
+                {editingDocument ? 'Update Document' : 'Add Document'}
               </button>
             </div>
           </div>

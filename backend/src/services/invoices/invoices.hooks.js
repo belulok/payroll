@@ -1,31 +1,20 @@
 const { authenticate } = require('@feathersjs/authentication').hooks;
-const { iff, isProvider, disallow } = require('feathers-hooks-common');
+const { filterByCompany, verifyAgentAccess } = require('../../hooks/filter-by-company');
+
+// Invoice uses 'companyId' instead of 'company'
+const invoiceCompanyOptions = { companyField: 'companyId' };
 
 // Permission check hook
 const checkPermissions = async (context) => {
   const { user } = context.params;
-  
+
   if (!user) {
     throw new Error('Authentication required');
   }
 
-  // Only admin and subcon-admin can manage invoices
-  if (!['admin', 'subcon-admin'].includes(user.role)) {
+  // Admin, agent, and subcon-admin can manage invoices
+  if (!['admin', 'agent', 'subcon-admin'].includes(user.role)) {
     throw new Error('Insufficient permissions to access invoices');
-  }
-
-  return context;
-};
-
-// Company filter hook
-const addCompanyFilter = async (context) => {
-  const { user } = context.params;
-  
-  if (user && user.companyId && user.role !== 'admin') {
-    context.params.query = {
-      ...context.params.query,
-      companyId: user.companyId
-    };
   }
 
   return context;
@@ -53,7 +42,7 @@ const validateInvoiceData = async (context) => {
     if (data.startDate && data.endDate) {
       const start = new Date(data.startDate);
       const end = new Date(data.endDate);
-      
+
       if (start >= end) {
         throw new Error('End date must be after start date');
       }
@@ -73,12 +62,12 @@ const populateData = async (context) => {
   if (context.method === 'create' && context.result) {
     // Populate client and project names
     const { app } = context;
-    
+
     if (context.data.clientId && !context.data.clientName) {
       const client = await app.service('clients').get(context.data.clientId);
       context.result.clientName = client.name;
     }
-    
+
     if (context.data.projectId && !context.data.projectName) {
       const project = await app.service('projects').get(context.data.projectId);
       context.result.projectName = project.name;
@@ -91,18 +80,18 @@ const populateData = async (context) => {
 module.exports = {
   before: {
     all: [authenticate('jwt')],
-    find: [checkPermissions, addCompanyFilter],
-    get: [checkPermissions, addCompanyFilter],
-    create: [checkPermissions, validateInvoiceData],
-    update: [checkPermissions, validateInvoiceData],
-    patch: [checkPermissions, validateInvoiceData],
-    remove: [checkPermissions]
+    find: [checkPermissions, filterByCompany(invoiceCompanyOptions)],
+    get: [checkPermissions, filterByCompany(invoiceCompanyOptions)],
+    create: [checkPermissions, filterByCompany(invoiceCompanyOptions), validateInvoiceData],
+    update: [checkPermissions, filterByCompany(invoiceCompanyOptions), validateInvoiceData],
+    patch: [checkPermissions, filterByCompany(invoiceCompanyOptions), validateInvoiceData],
+    remove: [checkPermissions, filterByCompany(invoiceCompanyOptions)]
   },
 
   after: {
     all: [],
     find: [],
-    get: [],
+    get: [verifyAgentAccess(invoiceCompanyOptions)],
     create: [populateData],
     update: [],
     patch: [],

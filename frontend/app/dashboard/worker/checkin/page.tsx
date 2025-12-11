@@ -132,24 +132,24 @@ export default function WorkerCheckinPage() {
         const workerData = await feathersClient.service('workers').get(currentUser.worker);
         setWorker(workerData);
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const tomorrow = new Date(today);
-        tomorrow.setDate(tomorrow.getDate() + 1);
-
-        const timesheets = await feathersClient.service('timesheets').find({
-          query: {
-            worker: currentUser.worker,
-            'dailyEntries.date': {
-              $gte: today.toISOString(),
-              $lt: tomorrow.toISOString()
-            },
-            $limit: 1
+        // Use worker-checkin service to get today's status
+        try {
+          const status = await feathersClient.service('worker-checkin').find({});
+          if (status) {
+            // Convert status to timesheet format for compatibility
+            setTodayTimesheet({
+              dailyEntries: [{
+                date: new Date(),
+                clockIn: status.clockIn,
+                clockOut: status.clockOut,
+                lunchOut: status.lunchOut,
+                lunchIn: status.lunchIn,
+                checkInMethod: status.checkInMethod
+              }]
+            });
           }
-        });
-
-        if (timesheets.data && timesheets.data.length > 0) {
-          setTodayTimesheet(timesheets.data[0]);
+        } catch (e) {
+          console.log('No check-in data for today');
         }
       }
     } catch (error) {
@@ -167,122 +167,70 @@ export default function WorkerCheckinPage() {
       setShowScanner(false);
 
       try {
-        console.log('User company:', user.company);
+        // Get company ID (might be string or object)
+        const companyId = typeof user.company === 'object'
+          ? (user.company?._id || user.company?.toString())
+          : user.company;
+
+        console.log('User company:', companyId);
+
+        if (!companyId) {
+          alert('No company assigned to your account.');
+          setProcessing(false);
+          return;
+        }
 
         // Verify QR code belongs to the company
-        // QR format: QR-{COMPANY_ID_FIRST_8_CHARS}-{TIMESTAMP}
-        const companyPrefix = user.company.substring(0, 8).toUpperCase();
+        // QR format: QR-{COMPANY_ID_FIRST_8_CHARS}-{NAME}-{TIMESTAMP}
+        const companyPrefix = companyId.substring(0, 8).toUpperCase();
         if (!qrData.includes(companyPrefix)) {
           alert(`Invalid QR code. This QR code does not belong to your company.\n\nScanned: ${qrData}\nExpected prefix: QR-${companyPrefix}`);
           setProcessing(false);
           return;
         }
 
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
+        // Determine which action to take based on current status
+        const currentEntry = todayTimesheet?.dailyEntries?.[0];
+        let action = 'clockIn';
 
-        // Get day of week
-        const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-        const dayOfWeek = dayNames[today.getDay()];
-
-        const weekStart = new Date(today);
-        weekStart.setDate(today.getDate() - today.getDay());
-        const weekEnd = new Date(weekStart);
-        weekEnd.setDate(weekStart.getDate() + 6);
-
-        let timesheet = todayTimesheet;
-
-        if (!timesheet) {
-          timesheet = await feathersClient.service('timesheets').create({
-            worker: user.worker,
-            company: user.company,
-            weekStartDate: weekStart,
-            weekEndDate: weekEnd,
-            status: 'draft',
-            dailyEntries: []
-          });
-        }
-
-        const todayEntry = timesheet.dailyEntries?.find((entry: any) => {
-          const entryDate = new Date(entry.date);
-          return entryDate.toDateString() === today.toDateString();
-        });
-
-        const updatedEntries = timesheet.dailyEntries || [];
-        const entryIndex = updatedEntries.findIndex((entry: any) => {
-          const entryDate = new Date(entry.date);
-          return entryDate.toDateString() === today.toDateString();
-        });
-
-        let message = '';
-
-        // Determine action based on current status
-        if (!todayEntry || !todayEntry.clockIn) {
-          // Check In
-          if (entryIndex >= 0) {
-            updatedEntries[entryIndex] = {
-              ...updatedEntries[entryIndex],
-              date: today,
-              dayOfWeek: dayOfWeek,
-              clockIn: new Date(),
-              checkInMethod: 'qr-code',
-              qrCodeCheckIn: {
-                qrCodeData: qrData,
-                timestamp: new Date()
-              },
-              isAbsent: false
-            };
-          } else {
-            updatedEntries.push({
-              date: today,
-              dayOfWeek: dayOfWeek,
-              clockIn: new Date(),
-              checkInMethod: 'qr-code',
-              qrCodeCheckIn: {
-                qrCodeData: qrData,
-                timestamp: new Date()
-              },
-              isAbsent: false
-            });
-          }
-          message = '✅ Checked In Successfully!';
-        } else if (todayEntry.clockIn && !todayEntry.lunchOut) {
-          // Lunch Out
-          updatedEntries[entryIndex] = {
-            ...updatedEntries[entryIndex],
-            lunchOut: new Date()
-          };
-          message = '🍽️ Lunch Break Started!';
-        } else if (todayEntry.lunchOut && !todayEntry.lunchIn) {
-          // Lunch In
-          updatedEntries[entryIndex] = {
-            ...updatedEntries[entryIndex],
-            lunchIn: new Date()
-          };
-          message = '✅ Back from Lunch!';
-        } else if (todayEntry.clockIn && !todayEntry.clockOut) {
-          // Check Out
-          updatedEntries[entryIndex] = {
-            ...updatedEntries[entryIndex],
-            clockOut: new Date(),
-            qrCodeCheckOut: {
-              qrCodeData: qrData,
-              timestamp: new Date()
-            }
-          };
-          message = '👋 Checked Out Successfully!';
-        } else {
+        if (!currentEntry || !currentEntry.clockIn) {
+          action = 'clockIn';
+        } else if (currentEntry.clockIn && !currentEntry.lunchOut) {
+          action = 'lunchOut';
+        } else if (currentEntry.lunchOut && !currentEntry.lunchIn) {
+          action = 'lunchIn';
+        } else if (currentEntry.lunchIn && !currentEntry.clockOut) {
+          action = 'clockOut';
+        } else if (currentEntry.clockOut) {
           alert('You have already completed all actions for today.');
           setProcessing(false);
           return;
         }
 
-        await feathersClient.service('timesheets').patch(timesheet._id, {
-          dailyEntries: updatedEntries
+        // Get user's location if available
+        let location = null;
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 });
+          });
+          location = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+            accuracy: position.coords.accuracy
+          };
+        } catch (e) {
+          console.log('Location not available');
+        }
+
+        // Use the new worker-checkin service
+        const result = await feathersClient.service('worker-checkin').create({
+          action,
+          qrCode: qrData,
+          location
         });
 
         // Show success message
-        alert(message);
+        alert(result.message || `Successfully ${action === 'clockIn' ? 'checked in' : action === 'clockOut' ? 'checked out' : action}`);
 
         // Refresh data
         await fetchData();
@@ -293,7 +241,7 @@ export default function WorkerCheckinPage() {
         setProcessing(false);
         setScanning(false);
         setShowScanner(false);
-        isProcessingRef.current = false; // Reset processing flag
+        isProcessingRef.current = false;
       }
     }
   };

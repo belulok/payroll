@@ -20,47 +20,44 @@ interface Client {
   updatedAt?: string;
 }
 
-export function useClients(companyId: string | undefined) {
+export function useClients(companyId?: string) {
   return useQuery({
     queryKey: ['clients', companyId],
     queryFn: async () => {
-      if (!companyId) return [];
+      const query: any = {
+        $limit: 500,
+        $sort: { name: 1 }
+      };
 
-      const response = await feathersClient.service('clients').find({
-        query: {
-          company: companyId,
-          $limit: 500,
-          $sort: { name: 1 }
-        }
-      });
+      // Only add company filter if companyId is provided
+      if (companyId) {
+        query.company = companyId;
+      }
 
+      const response = await feathersClient.service('clients').find({ query });
       return (response.data || response) as Client[];
     },
-    enabled: !!companyId,
   });
 }
 
-export function useCreateClient(companyId: string | undefined) {
+export function useCreateClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Client>) => {
-      const targetCompany = data.company || companyId;
+    mutationFn: async (data: Partial<Client> & { company: string }) => {
+      if (!data.company) {
+        throw new Error('Company ID is required');
+      }
 
-      if (!targetCompany) throw new Error('Company ID is required');
-
-      return await feathersClient.service('clients').create({
-        ...data,
-        company: targetCompany
-      });
+      return await feathersClient.service('clients').create(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
     },
   });
 }
 
-export function useUpdateClient(companyId: string | undefined) {
+export function useUpdateClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -68,12 +65,12 @@ export function useUpdateClient(companyId: string | undefined) {
       return await feathersClient.service('clients').patch(id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
     },
   });
 }
 
-export function useDeleteClient(companyId: string | undefined) {
+export function useDeleteClient() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -81,8 +78,7 @@ export function useDeleteClient(companyId: string | undefined) {
       return await feathersClient.service('clients').remove(id);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['clients', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['clients'] });
     },
   });
 }
-

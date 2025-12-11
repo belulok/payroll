@@ -30,70 +30,55 @@ interface Project {
   updatedAt?: string;
 }
 
-export function useProjects(companyId: string | undefined) {
+export function useProjects(companyId?: string) {
   return useQuery({
     queryKey: ['projects', companyId],
     queryFn: async () => {
-      if (!companyId) return [];
+      const query: any = {
+        $limit: 500,
+        $sort: { name: 1 },
+        $populate: ['client']
+      };
 
-      const response = await feathersClient.service('projects').find({
-        query: {
-          company: companyId,
-          $limit: 500,
-          $sort: { name: 1 },
-          $populate: ['client']
-        }
-      });
+      if (companyId) {
+        query.company = companyId;
+      }
 
-      console.log('useProjects response:', response);
-
+      const response = await feathersClient.service('projects').find({ query });
       return (response.data || response) as Project[];
     },
-    enabled: !!companyId,
   });
 }
 
-export function useCreateProject(companyId: string | undefined) {
+export function useCreateProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Project>) => {
-      if (!companyId) throw new Error('Company ID is required');
+    mutationFn: async (data: Partial<Project> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
 
-      return await feathersClient.service('projects').create({
-        ...data,
-        company: companyId
-      });
+      return await feathersClient.service('projects').create(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
 
-export function useUpdateProject(companyId: string | undefined) {
+export function useUpdateProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Project> }) => {
-      console.log('🔧 useUpdateProject - Patching project:', id);
-      console.log('🔧 useUpdateProject - Data to patch:', data);
-      console.log('🔧 useUpdateProject - Client field:', data.client);
-
-      const result = await feathersClient.service('projects').patch(id, data);
-
-      console.log('🔧 useUpdateProject - Patch result:', result);
-      console.log('🔧 useUpdateProject - Result client field:', result.client);
-
-      return result;
+      return await feathersClient.service('projects').patch(id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
 
-export function useDeleteProject(companyId: string | undefined) {
+export function useDeleteProject() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -101,8 +86,7 @@ export function useDeleteProject(companyId: string | undefined) {
       return await feathersClient.service('projects').remove(projectId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['projects', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
     },
   });
 }
-

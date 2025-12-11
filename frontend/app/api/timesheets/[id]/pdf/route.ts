@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3030';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -26,7 +28,7 @@ export async function GET(
     }
 
     // Fetch timesheet data from backend with JWT token
-    const backendUrl = new URL(`http://localhost:3030/timesheets/${timesheetId}`);
+    const backendUrl = new URL(`${API_URL}/timesheets/${timesheetId}`);
     backendUrl.searchParams.set('$populate', 'worker');
 
     console.log('Fetching timesheet from:', backendUrl.toString());

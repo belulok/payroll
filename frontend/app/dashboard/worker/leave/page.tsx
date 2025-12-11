@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import feathersClient from '@/lib/feathers';
+import { API_URL } from '@/lib/config';
 import {
   CalendarDaysIcon,
   PlusIcon,
@@ -12,8 +13,16 @@ import {
   ClockIcon,
   XCircleIcon,
   ChevronLeftIcon,
-  ChevronRightIcon
+  ChevronRightIcon,
+  PaperClipIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
+
+interface UploadedDocument {
+  name: string;
+  url: string;
+  uploadDate: Date;
+}
 
 export default function WorkerLeavePage() {
   const router = useRouter();
@@ -27,6 +36,8 @@ export default function WorkerLeavePage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [isHalfDay, setIsHalfDay] = useState(false);
   const [halfDayPeriod, setHalfDayPeriod] = useState<'AM' | 'PM'>('AM');
+  const [uploadedDocs, setUploadedDocs] = useState<UploadedDocument[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
   const [formData, setFormData] = useState({
     leaveType: '',
     startDate: '',
@@ -55,26 +66,135 @@ export default function WorkerLeavePage() {
         return;
       }
 
-      // Fetch leave types
-      const typesResponse = await feathersClient.service('leave-types').find({
-        query: {
-          company: currentUser.company,
-          isActive: true,
-          $limit: 100
-        }
-      });
-      setLeaveTypes(typesResponse.data || typesResponse);
+      // Fetch worker details to get their group and job band
+      let workerData = null;
+      try {
+        workerData = await feathersClient.service('workers').get(currentUser.worker);
+      } catch (e) {
+        console.log('Could not fetch worker details');
+      }
 
-      // Fetch leave balances
-      const currentYear = new Date().getFullYear();
-      const balancesResponse = await feathersClient.service('leave-balances').find({
-        query: {
-          worker: currentUser.worker,
-          year: currentYear,
-          $limit: 100
+      // Fetch compensation config to get leave entitlements based on group/job band
+      let leaveTypesFromConfig: any[] = [];
+      try {
+        const configResponse = await feathersClient.service('compensation-configs').find({
+          query: {
+            company: currentUser.company,
+            $limit: 1
+          }
+        });
+        const config = configResponse.data?.[0] || configResponse[0];
+
+        if (config && config.benefitConfigs) {
+          // Find matching benefit config for this worker's group or job band
+          const workerGroupId = typeof workerData?.workerGroup === 'object'
+            ? workerData.workerGroup._id
+            : workerData?.workerGroup;
+          const workerJobBandId = typeof workerData?.jobBand === 'object'
+            ? workerData.jobBand._id
+            : workerData?.jobBand;
+
+          // Find the matching config
+          let matchingConfig = config.benefitConfigs.find((bc: any) => {
+            if (bc.configType === 'group' && bc.group === workerGroupId) return true;
+            if (bc.configType === 'jobBand' && bc.jobBand === workerJobBandId) return true;
+            return false;
+          });
+
+          // If no specific match, try to find a default config
+          if (!matchingConfig && config.benefitConfigs.length > 0) {
+            matchingConfig = config.benefitConfigs[0];
+          }
+
+          if (matchingConfig) {
+            // Use dynamic leave entitlements from config
+            if (matchingConfig.leaveEntitlements && matchingConfig.leaveEntitlements.length > 0) {
+              leaveTypesFromConfig = matchingConfig.leaveEntitlements.map((le: any, index: number) => ({
+                _id: `leave-${le.code || index}`,
+                name: le.name,
+                code: le.code,
+                defaultDaysAllowed: le.daysPerYear,
+                isPaid: le.isPaid,
+                requiresApproval: le.requiresApproval,
+                requiresDocument: le.requiresDocument
+              }));
+            } else {
+              // Fallback to legacy annualLeave/sickLeave if no leaveEntitlements
+              if (matchingConfig.annualLeave > 0) {
+                leaveTypesFromConfig.push({
+                  _id: 'annual-leave',
+                  name: 'Annual Leave',
+                  code: 'AL',
+                  defaultDaysAllowed: matchingConfig.annualLeave,
+                  isPaid: true
+                });
+              }
+              if (matchingConfig.sickLeave > 0) {
+                leaveTypesFromConfig.push({
+                  _id: 'sick-leave',
+                  name: 'Sick Leave',
+                  code: 'SL',
+                  defaultDaysAllowed: matchingConfig.sickLeave,
+                  isPaid: true
+                });
+              }
+            }
+          }
         }
-      });
-      setLeaveBalances(balancesResponse.data || balancesResponse);
+      } catch (e) {
+        console.log('Could not fetch compensation config:', e);
+      }
+
+      // Also try to fetch from leave-types service (fallback)
+      try {
+        const typesResponse = await feathersClient.service('leave-types').find({
+          query: {
+            company: currentUser.company,
+            isActive: true,
+            $limit: 100
+          }
+        });
+        const serviceLeaveTypes = typesResponse.data || typesResponse || [];
+        // Merge with config leave types (config takes priority)
+        if (serviceLeaveTypes.length > 0 && leaveTypesFromConfig.length === 0) {
+          leaveTypesFromConfig = serviceLeaveTypes;
+        }
+      } catch (e) {
+        console.log('Could not fetch leave-types service');
+      }
+
+      setLeaveTypes(leaveTypesFromConfig);
+
+      // Fetch leave balances or create virtual ones from config
+      const currentYear = new Date().getFullYear();
+      let balances: any[] = [];
+
+      try {
+        const balancesResponse = await feathersClient.service('leave-balances').find({
+          query: {
+            worker: currentUser.worker,
+            year: currentYear,
+            $limit: 100
+          }
+        });
+        balances = balancesResponse.data || balancesResponse || [];
+      } catch (e) {
+        console.log('Could not fetch leave balances');
+      }
+
+      // If no balances exist, create virtual balances from leave types
+      if (balances.length === 0 && leaveTypesFromConfig.length > 0) {
+        balances = leaveTypesFromConfig.map((lt: any) => ({
+          _id: `virtual-${lt._id}`,
+          leaveType: lt,
+          totalDays: lt.defaultDaysAllowed,
+          usedDays: 0,
+          pendingDays: 0,
+          year: currentYear
+        }));
+      }
+
+      setLeaveBalances(balances);
 
       // Fetch leave requests
       const requestsResponse = await feathersClient.service('leave-requests').find({
@@ -138,23 +258,54 @@ export default function WorkerLeavePage() {
         totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)) + 1;
       }
 
-      await feathersClient.service('leave-requests').create({
+      // Find the selected leave type
+      const selectedLeaveType = leaveTypes.find((lt: any) => lt._id === formData.leaveType);
+
+      // Check remaining balance
+      const balance = leaveBalances.find((b: any) => b.leaveType?._id === formData.leaveType);
+      const remaining = balance ? balance.totalDays - balance.usedDays - balance.pendingDays : 0;
+
+      if (totalDays > remaining) {
+        alert(`Insufficient leave balance. You have ${remaining} days remaining.`);
+        return;
+      }
+
+      // Prepare leave request data - store leave type name for display
+      const leaveRequestData: any = {
         worker: user.worker,
         company: user.company,
-        leaveType: formData.leaveType,
         startDate: startDate,
         endDate: endDate,
         totalDays: totalDays,
         reason: formData.reason,
         status: 'pending',
         isHalfDay: isHalfDay,
-        halfDayPeriod: isHalfDay ? halfDayPeriod : undefined
-      });
+        halfDayPeriod: isHalfDay ? halfDayPeriod : undefined,
+        leaveTypeName: selectedLeaveType?.name,
+        leaveTypeCode: selectedLeaveType?.code,
+        // Include uploaded documents (optional)
+        documents: uploadedDocs.length > 0 ? uploadedDocs : undefined
+      };
+
+      // Only include leaveType ObjectId if it's not a virtual ID
+      // Virtual IDs start with 'leave-' or 'annual-' or 'sick-' or 'virtual-'
+      const isVirtualId = formData.leaveType && (
+        formData.leaveType.startsWith('leave-') ||
+        formData.leaveType.startsWith('annual-') ||
+        formData.leaveType.startsWith('sick-') ||
+        formData.leaveType.startsWith('virtual-')
+      );
+      if (formData.leaveType && !isVirtualId) {
+        leaveRequestData.leaveType = formData.leaveType;
+      }
+
+      await feathersClient.service('leave-requests').create(leaveRequestData);
 
       setShowModal(false);
       setFormData({ leaveType: '', startDate: '', endDate: '', reason: '' });
       setIsHalfDay(false);
       setHalfDayPeriod('AM');
+      setUploadedDocs([]);
       fetchData();
       alert('Leave request submitted successfully!');
     } catch (error: any) {
@@ -163,11 +314,90 @@ export default function WorkerLeavePage() {
     }
   };
 
+  // Handle cancel leave request
+  const handleCancelLeave = async (leaveId: string) => {
+    if (!confirm('Are you sure you want to cancel this leave request?')) {
+      return;
+    }
+
+    try {
+      const token = localStorage.getItem('feathers-jwt');
+      const response = await fetch(`${API_URL}/leave-requests/${leaveId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to cancel leave');
+      }
+
+      alert('Leave request cancelled successfully!');
+      fetchData(); // Refresh the list
+    } catch (error: any) {
+      console.error('Error cancelling leave:', error);
+      alert(error.message || 'Failed to cancel leave request');
+    }
+  };
+
+  // Handle document upload
+  const handleDocumentUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    setIsUploading(true);
+    const newDocs: UploadedDocument[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const response = await fetch('${API_URL}/uploads', {
+          method: 'POST',
+          body: formData,
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('feathers-jwt')}`
+          }
+        });
+
+        if (response.ok) {
+          const result = await response.json();
+          newDocs.push({
+            name: file.name,
+            url: result.url || result.id,
+            uploadDate: new Date()
+          });
+        } else {
+          console.error('Failed to upload:', file.name);
+        }
+      } catch (error) {
+        console.error('Upload error:', error);
+      }
+    }
+
+    setUploadedDocs([...uploadedDocs, ...newDocs]);
+    setIsUploading(false);
+
+    // Reset file input
+    e.target.value = '';
+  };
+
+  // Remove uploaded document
+  const removeDocument = (index: number) => {
+    setUploadedDocs(uploadedDocs.filter((_, i) => i !== index));
+  };
+
   const getStatusBadge = (status: string) => {
     const badges: any = {
       pending: { bg: 'bg-yellow-100', text: 'text-yellow-800', icon: ClockIcon },
       approved: { bg: 'bg-green-100', text: 'text-green-800', icon: CheckCircleIcon },
-      rejected: { bg: 'bg-red-100', text: 'text-red-800', icon: XCircleIcon }
+      rejected: { bg: 'bg-red-100', text: 'text-red-800', icon: XCircleIcon },
+      cancelled: { bg: 'bg-gray-100', text: 'text-gray-800', icon: XCircleIcon }
     };
     return badges[status] || badges.pending;
   };
@@ -377,7 +607,7 @@ export default function WorkerLeavePage() {
                   }`}
                   title={
                     isHol ? `${holiday.name} (Holiday)` :
-                    hasLeave ? `${leaveRequest.leaveType?.name || 'Leave'} - ${leaveRequest.status}` :
+                    hasLeave ? `${leaveRequest.leaveType?.name || leaveRequest.leaveTypeName || 'Leave'} - ${leaveRequest.status}` :
                     ''
                   }
                 >
@@ -393,7 +623,7 @@ export default function WorkerLeavePage() {
                       leaveRequest.status === 'pending' ? 'text-yellow-700' :
                       'text-gray-600'
                     }`}>
-                      {leaveRequest.leaveType?.code || 'L'}
+                      {leaveRequest.leaveType?.code || leaveRequest.leaveTypeCode || 'L'}
                     </div>
                   )}
                 </div>
@@ -443,7 +673,7 @@ export default function WorkerLeavePage() {
                   <div className="flex-1">
                     <div className="flex items-center gap-3 mb-2">
                       <h3 className="text-lg font-semibold text-gray-900 capitalize">
-                        {request.leaveType?.name || 'Leave'}
+                        {request.leaveType?.name || request.leaveTypeName || 'Leave'}
                         {request.isHalfDay && (
                           <span className="text-sm font-normal text-indigo-600 ml-2">
                             (Half Day - {request.halfDayPeriod})
@@ -468,8 +698,20 @@ export default function WorkerLeavePage() {
                       {request.rejectionReason && (
                         <p className="text-red-600"><strong>Rejection Reason:</strong> {request.rejectionReason}</p>
                       )}
+                      {request.cancelledBy && (
+                        <p className="text-gray-600"><strong>Cancelled:</strong> {new Date(request.cancelledAt).toLocaleDateString()}</p>
+                      )}
                     </div>
                   </div>
+                  {/* Cancel button for pending or approved leave */}
+                  {(request.status === 'pending' || request.status === 'approved') && (
+                    <button
+                      onClick={() => handleCancelLeave(request._id)}
+                      className="ml-4 px-4 py-2 text-sm font-medium text-red-600 hover:text-red-800 hover:bg-red-50 rounded-lg transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -611,6 +853,62 @@ export default function WorkerLeavePage() {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   required
                 />
+              </div>
+
+              {/* Document Upload Section (Optional) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Supporting Documents <span className="text-gray-400 font-normal">(Optional)</span>
+                </label>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4">
+                  <input
+                    type="file"
+                    id="doc-upload"
+                    multiple
+                    accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.gif"
+                    onChange={handleDocumentUpload}
+                    className="hidden"
+                    disabled={isUploading}
+                  />
+                  <label
+                    htmlFor="doc-upload"
+                    className={`flex flex-col items-center justify-center cursor-pointer ${isUploading ? 'opacity-50' : ''}`}
+                  >
+                    <PaperClipIcon className="h-8 w-8 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">
+                      {isUploading ? 'Uploading...' : 'Click to upload documents'}
+                    </span>
+                    <span className="text-xs text-gray-400 mt-1">
+                      PDF, DOC, DOCX, JPG, PNG (Multiple files allowed)
+                    </span>
+                  </label>
+                </div>
+
+                {/* Uploaded Documents List */}
+                {uploadedDocs.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {uploadedDocs.map((doc, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between bg-gray-50 rounded-lg px-3 py-2"
+                      >
+                        <div className="flex items-center gap-2">
+                          <PaperClipIcon className="h-4 w-4 text-gray-500" />
+                          <span className="text-sm text-gray-700 truncate max-w-[200px]">
+                            {doc.name}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeDocument(index)}
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <TrashIcon className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-3 pt-4">

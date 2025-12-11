@@ -51,49 +51,41 @@ interface Worker {
   user?: string;
 }
 
-export function useWorkers(companyId: string | undefined) {
+export function useWorkers(companyId?: string) {
   return useQuery({
     queryKey: ['workers', companyId],
     queryFn: async () => {
-      if (!companyId) return [];
+      const query: any = {
+        $limit: 100,
+        $sort: { employeeId: 1 }
+      };
 
-      const response = await feathersClient.service('workers').find({
-        query: {
-          company: companyId,
-          $limit: 100,
-          $sort: { employeeId: 1 }
-        }
-      });
+      if (companyId) {
+        query.company = companyId;
+      }
+
+      const response = await feathersClient.service('workers').find({ query });
       return (response.data || response) as Worker[];
     },
-    enabled: !!companyId,
   });
 }
 
-export function useCreateWorker(companyId: string | undefined) {
+export function useCreateWorker() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Worker>) => {
-      // Use company from data if provided (for admin users), otherwise use companyId
-      const targetCompany = data.company || companyId;
-      if (!targetCompany) throw new Error('Company ID is required');
+    mutationFn: async (data: Partial<Worker> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
 
-      return await feathersClient.service('workers').create({
-        ...data,
-        company: targetCompany
-      });
+      return await feathersClient.service('workers').create(data);
     },
     onSuccess: () => {
-      // Invalidate and refetch workers query
-      queryClient.invalidateQueries({ queryKey: ['workers', companyId] });
-      // Also invalidate all workers queries to refresh the list
       queryClient.invalidateQueries({ queryKey: ['workers'] });
     },
   });
 }
 
-export function useUpdateWorker(companyId: string | undefined) {
+export function useUpdateWorker() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -101,15 +93,12 @@ export function useUpdateWorker(companyId: string | undefined) {
       return await feathersClient.service('workers').patch(id, data);
     },
     onSuccess: () => {
-      // Invalidate the specific company workers list
-      queryClient.invalidateQueries({ queryKey: ['workers', companyId] });
-      // Also invalidate all workers queries so cross-company lists stay in sync
       queryClient.invalidateQueries({ queryKey: ['workers'] });
     },
   });
 }
 
-export function useArchiveWorker(companyId: string | undefined) {
+export function useArchiveWorker() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -117,12 +106,12 @@ export function useArchiveWorker(companyId: string | undefined) {
       return await feathersClient.service('workers').patch(workerId, { isActive: false });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workers', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['workers'] });
     },
   });
 }
 
-export function useUnarchiveWorker(companyId: string | undefined) {
+export function useUnarchiveWorker() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -130,8 +119,7 @@ export function useUnarchiveWorker(companyId: string | undefined) {
       return await feathersClient.service('workers').patch(workerId, { isActive: true });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['workers', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['workers'] });
     },
   });
 }
-

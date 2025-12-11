@@ -12,6 +12,7 @@ export interface Loan {
     employeeId: string;
     email?: string;
     phone?: string;
+    profilePicture?: string;
   };
   company: {
     _id: string;
@@ -58,27 +59,26 @@ export interface Loan {
 }
 
 // Get all loans for a company
-export function useLoans(companyId: string | undefined) {
+export function useLoans(companyId?: string) {
   return useQuery({
     queryKey: ['loans', companyId],
     queryFn: async () => {
-      if (!companyId) return [];
+      const query: any = {
+        $sort: { createdAt: -1 }
+      };
 
-      const response = await feathersClient.service('loans').find({
-        query: {
-          company: companyId,
-          $sort: { createdAt: -1 }
-        }
-      });
+      if (companyId) {
+        query.company = companyId;
+      }
 
+      const response = await feathersClient.service('loans').find({ query });
       return response.data || response;
     },
-    enabled: !!companyId,
   });
 }
 
 // Get a specific loan
-export function useLoan(loanId: string | undefined) {
+export function useLoan(loanId?: string) {
   return useQuery({
     queryKey: ['loan', loanId],
     queryFn: async () => {
@@ -90,25 +90,22 @@ export function useLoan(loanId: string | undefined) {
 }
 
 // Create a new loan
-export function useCreateLoan(companyId: string | undefined) {
+export function useCreateLoan() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Loan>) => {
-      return await feathersClient.service('loans').create({
-        ...data,
-        company: data.company || companyId
-      });
+    mutationFn: async (data: Partial<Loan> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
+      return await feathersClient.service('loans').create(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
     },
   });
 }
 
 // Update a loan
-export function useUpdateLoan(companyId: string | undefined) {
+export function useUpdateLoan() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -116,15 +113,14 @@ export function useUpdateLoan(companyId: string | undefined) {
       return await feathersClient.service('loans').patch(id, data);
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['loan', data._id] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['loan', data._id] });
     },
   });
 }
 
 // Delete a loan
-export function useDeleteLoan(companyId: string | undefined) {
+export function useDeleteLoan() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -132,14 +128,13 @@ export function useDeleteLoan(companyId: string | undefined) {
       return await feathersClient.service('loans').remove(loanId);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
     },
   });
 }
 
 // Record a payment for a loan
-export function useRecordLoanPayment(companyId: string | undefined) {
+export function useRecordLoanPayment() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -161,9 +156,8 @@ export function useRecordLoanPayment(companyId: string | undefined) {
       });
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['loans', companyId] });
-      queryClient.invalidateQueries({ queryKey: ['loan', data._id] });
       queryClient.invalidateQueries({ queryKey: ['loans'] });
+      queryClient.invalidateQueries({ queryKey: ['loan', data._id] });
     },
   });
 }

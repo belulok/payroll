@@ -334,6 +334,7 @@ export default function InvoicesPage() {
           onClose={() => setShowGenerateModal(false)}
           clients={clients}
           projects={projects}
+          companyId={selectedCompany?._id}
           onGenerate={generateInvoiceMutation}
         />
       )}
@@ -401,7 +402,7 @@ function getWeeklyOptions(count = 12) {
 }
 
 // Generate Invoice Modal Component
-function GenerateInvoiceModal({ isOpen, onClose, clients, projects, onGenerate }: any) {
+function GenerateInvoiceModal({ isOpen, onClose, clients, projects, companyId, onGenerate }: any) {
 	const [formData, setFormData] = useState({
 		clientId: '',
 		projectId: '',
@@ -439,9 +440,14 @@ function GenerateInvoiceModal({ isOpen, onClose, clients, projects, onGenerate }
       return;
     }
 
+    if (!companyId) {
+      alert('Please select a company first');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      await onGenerate.mutateAsync(formData);
+      await onGenerate.mutateAsync({ ...formData, companyId });
       alert('Invoice generated successfully!');
       onClose();
       setFormData({

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useCompany } from '@/contexts/CompanyContext';
 import { useTimesheets, useUpdateTimesheet } from '@/hooks/useTimesheets';
 import feathersClient from '@/lib/feathers';
+import { API_URL } from '@/lib/config';
 import {
   ClockIcon,
   CheckCircleIcon,
@@ -13,7 +14,9 @@ import {
   EyeIcon,
   PencilIcon,
   XMarkIcon,
-  DocumentArrowDownIcon
+  DocumentArrowDownIcon,
+  CalendarDaysIcon,
+  UserGroupIcon
 } from '@heroicons/react/24/outline';
 
 interface DailyEntry {
@@ -97,8 +100,10 @@ interface WeeklyTimesheet {
 const statusConfig = {
   draft: { label: 'Draft', color: 'bg-gray-100 text-gray-800' },
   submitted: { label: 'Submitted', color: 'bg-blue-100 text-blue-800' },
-  approved_subcon: { label: 'Approved (Subcon)', color: 'bg-yellow-100 text-yellow-800' },
-  approved_admin: { label: 'Approved', color: 'bg-green-100 text-green-800' },
+  verified: { label: 'Verified', color: 'bg-green-100 text-green-800' },
+  approved_subcon: { label: 'Verified (Subcon)', color: 'bg-yellow-100 text-yellow-800' },
+  approved_admin: { label: 'Verified', color: 'bg-green-100 text-green-800' },
+  approved: { label: 'Verified', color: 'bg-green-100 text-green-800' },
   rejected: { label: 'Rejected', color: 'bg-red-100 text-red-800' }
 };
 
@@ -142,11 +147,34 @@ function formatTimeForInput(timeString: string): string {
   return date.toTimeString().slice(0, 5); // HH:MM format
 }
 
+// Helper to check if a date is a public holiday
+// Compare using LOCAL date (not UTC) to handle timezone correctly
+function isPublicHoliday(date: Date, holidays: any[]): any | null {
+  // Get local date components
+  const entryYear = date.getFullYear();
+  const entryMonth = date.getMonth();
+  const entryDay = date.getDate();
+
+  console.log(`Checking entry: ${entryYear}-${entryMonth + 1}-${entryDay} (${date.toISOString()})`);
+
+  return holidays.find((h: any) => {
+    const holidayDate = new Date(h.date);
+    const hYear = holidayDate.getFullYear();
+    const hMonth = holidayDate.getMonth();
+    const hDay = holidayDate.getDate();
+
+    console.log(`  vs Holiday "${h.name}": ${hYear}-${hMonth + 1}-${hDay} (${h.date})`);
+
+    const match = hYear === entryYear && hMonth === entryMonth && hDay === entryDay;
+    if (match) console.log(`  ✓ MATCH!`);
+    return match;
+  });
+}
+
 export default function TimesheetsPage() {
   const { selectedCompany } = useCompany();
-  // Start with Nov 23, 2025 (last week of generated data)
-  const defaultWeekStart = getMonday(new Date('2025-11-23'));
-  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(defaultWeekStart);
+  // Always start with the current week (Monday of this week)
+  const [currentWeekStart, setCurrentWeekStart] = useState<Date>(() => getMonday(new Date()));
   const [showModal, setShowModal] = useState(false);
   const [user, setUser] = useState<any>(null);
 
@@ -155,7 +183,7 @@ export default function TimesheetsPage() {
     selectedCompany?._id,
     currentWeekStart
   );
-  const updateTimesheet = useUpdateTimesheet(selectedCompany?._id, currentWeekStart);
+  const updateTimesheet = useUpdateTimesheet();
 
   const [selectedWeeklyTimesheet, setSelectedWeeklyTimesheet] = useState<WeeklyTimesheet | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -166,6 +194,201 @@ export default function TimesheetsPage() {
   const [clients, setClients] = useState<any[]>([]);
   const [supervisors, setSupervisors] = useState<any[]>([]);
   const [tasks, setTasks] = useState<any[]>([]);
+
+  // Generate Timesheet Modal
+  const [showGenerateModal, setShowGenerateModal] = useState(false);
+  const [generateWeekStart, setGenerateWeekStart] = useState('');
+  const [hourlyWorkers, setHourlyWorkers] = useState<any[]>([]);
+  const [selectedWorkers, setSelectedWorkers] = useState<string[]>([]);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generateResults, setGenerateResults] = useState<{ created: string[]; skipped: string[] } | null>(null);
+
+  // Public Holidays
+  const [publicHolidays, setPublicHolidays] = useState<any[]>([]);
+
+  // Interface for client timesheet settings
+  interface TimesheetSettings {
+    minuteIncrement: number;
+    roundingMethod: 'nearest' | 'up' | 'down';
+    maxHoursPerDay: number;
+    maxOTHoursPerDay: number;
+    allowOvertime: boolean;
+  }
+
+  // Default settings if no client settings found
+  const defaultSettings: TimesheetSettings = {
+    minuteIncrement: 30,
+    roundingMethod: 'nearest',
+    maxHoursPerDay: 8,
+    maxOTHoursPerDay: 4,
+    allowOvertime: true
+  };
+
+  // Round minutes based on increment and method
+  const roundMinutes = (minutes: number, increment: number, method: 'nearest' | 'up' | 'down'): number => {
+    if (increment <= 1) return minutes;
+
+    switch (method) {
+      case 'up':
+        return Math.ceil(minutes / increment) * increment;
+      case 'down':
+        return Math.floor(minutes / increment) * increment;
+      case 'nearest':
+      default:
+        return Math.round(minutes / increment) * increment;
+    }
+  };
+
+  // Helper function to calculate hours from timestamps with client settings
+  const calculateHoursFromTimestamps = (entry: any, settings: TimesheetSettings = defaultSettings) => {
+    console.log('Calculating hours for entry with settings:', settings);
+
+    if (!entry.clockIn || !entry.clockOut) {
+      console.log('Missing clockIn or clockOut');
+      return { normalHours: 0, ot1_5Hours: 0, ot2_0Hours: 0, totalHours: 0 };
+    }
+
+    // Get date string from entry.date for combining with time-only values
+    const getDateStr = () => {
+      if (entry.date) {
+        const d = new Date(entry.date);
+        if (!isNaN(d.getTime())) {
+          return d.toISOString().split('T')[0];
+        }
+      }
+      return new Date().toISOString().split('T')[0];
+    };
+    const dateStr = getDateStr();
+
+    // Parse a time value - can be Date object, ISO string, or time-only string
+    const parseTime = (value: any): Date | null => {
+      if (!value) return null;
+
+      // If already a Date object (won't happen after JSON serialization, but just in case)
+      if (value instanceof Date) return value;
+
+      // Try parsing directly first
+      let date = new Date(value);
+      if (!isNaN(date.getTime())) {
+        console.log(`Parsed "${value}" directly as:`, date.toISOString());
+        return date;
+      }
+
+      // If it's a time-only string like "08:41:51" or "08:41", combine with date
+      if (typeof value === 'string') {
+        const timeMatch = value.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+        if (timeMatch) {
+          const combined = `${dateStr}T${value}`;
+          date = new Date(combined);
+          if (!isNaN(date.getTime())) {
+            console.log(`Parsed time-only "${value}" with date as:`, date.toISOString());
+            return date;
+          }
+        }
+      }
+
+      console.warn('Could not parse time value:', value);
+      return null;
+    };
+
+    // Parse times but normalize to same base date to fix date mismatch issues
+    const clockInRaw = parseTime(entry.clockIn);
+    const clockOutRaw = parseTime(entry.clockOut);
+
+    console.log('Parsed clockIn raw:', clockInRaw?.toISOString());
+    console.log('Parsed clockOut raw:', clockOutRaw?.toISOString());
+
+    // Validate dates
+    if (!clockInRaw || !clockOutRaw) {
+      console.warn('Failed to parse dates:', { clockIn: entry.clockIn, clockOut: entry.clockOut });
+      return { normalHours: 0, ot1_5Hours: 0, ot2_0Hours: 0, totalHours: 0 };
+    }
+
+    // Normalize all times to the same base date (entry.date or today)
+    // This fixes issues where clockIn/clockOut are stored with different dates
+    const baseDate = new Date(dateStr);
+
+    const normalizeToBaseDate = (time: Date): Date => {
+      const normalized = new Date(baseDate);
+      normalized.setHours(time.getHours(), time.getMinutes(), time.getSeconds(), time.getMilliseconds());
+      return normalized;
+    };
+
+    const clockIn = normalizeToBaseDate(clockInRaw);
+    const clockOut = normalizeToBaseDate(clockOutRaw);
+
+    console.log('Normalized clockIn:', clockIn.toISOString());
+    console.log('Normalized clockOut:', clockOut.toISOString());
+
+    // Handle lunch break - also normalize to same date
+    let lunchOut: Date | null = null;
+    let lunchIn: Date | null = null;
+
+    if (entry.lunchOut) {
+      const raw = parseTime(entry.lunchOut);
+      if (raw) lunchOut = normalizeToBaseDate(raw);
+    }
+    if (entry.lunchIn) {
+      const raw = parseTime(entry.lunchIn);
+      if (raw) lunchIn = normalizeToBaseDate(raw);
+    }
+
+    // Calculate total worked time in minutes
+    let totalMinutes = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60);
+    console.log('Minutes before lunch:', totalMinutes);
+
+    // Subtract lunch break if both lunch times are provided
+    if (lunchOut && lunchIn && lunchIn > lunchOut) {
+      const lunchMinutes = (lunchIn.getTime() - lunchOut.getTime()) / (1000 * 60);
+      totalMinutes -= lunchMinutes;
+    }
+
+    console.log('Minutes after lunch:', totalMinutes);
+
+    // Apply rounding based on settings
+    totalMinutes = roundMinutes(totalMinutes, settings.minuteIncrement, settings.roundingMethod);
+    console.log('Minutes after rounding:', totalMinutes);
+
+    const totalHours = totalMinutes / 60;
+    console.log('Total hours:', totalHours);
+
+    // Calculate normal and overtime hours based on settings
+    let normalHours = 0;
+    let ot1_5Hours = 0;
+    let ot2_0Hours = 0;
+
+    const maxNormal = settings.maxHoursPerDay;
+    const maxOT = settings.maxOTHoursPerDay;
+
+    if (totalHours <= maxNormal) {
+      normalHours = totalHours;
+    } else {
+      normalHours = maxNormal;
+
+      // Only calculate OT if allowed
+      if (settings.allowOvertime) {
+        const otHours = Math.min(totalHours - maxNormal, maxOT);
+
+        // Split OT into 1.5x and 2x rates (first 2 hours at 1.5x, rest at 2x)
+        if (otHours <= 2) {
+          ot1_5Hours = otHours;
+        } else {
+          ot1_5Hours = 2;
+          ot2_0Hours = otHours - 2;
+        }
+      }
+    }
+
+    const result = {
+      normalHours: Math.max(0, normalHours),
+      ot1_5Hours: Math.max(0, ot1_5Hours),
+      ot2_0Hours: Math.max(0, ot2_0Hours),
+      totalHours: Math.max(0, totalHours)
+    };
+
+    console.log('Calculation result:', result);
+    return result;
+  };
 
   // Fetch current user for role-based permissions
   useEffect(() => {
@@ -209,6 +432,24 @@ export default function TimesheetsPage() {
           query: { company: selectedCompany._id }
         });
         setTasks(tasksData.data || []);
+
+        // Fetch public holidays for the current year
+        const year = new Date().getFullYear();
+        try {
+          const holidaysData = await feathersClient.service('gazetted-holidays').find({
+            query: {
+              company: selectedCompany._id,
+              year: year,
+              isActive: true,
+              $limit: 100
+            }
+          });
+          const holidays = holidaysData.data || holidaysData || [];
+          console.log('Loaded public holidays:', holidays);
+          setPublicHolidays(holidays);
+        } catch (err) {
+          console.error('Error fetching holidays:', err);
+        }
       } catch (error) {
         console.error('Error fetching dropdown data:', error);
       }
@@ -217,8 +458,119 @@ export default function TimesheetsPage() {
     fetchDropdownData();
   }, [selectedCompany]);
 
-  const handleViewWorkerWeek = (weeklyTimesheet: WeeklyTimesheet) => {
-    setSelectedWeeklyTimesheet(weeklyTimesheet);
+  const handleViewWorkerWeek = async (weeklyTimesheet: WeeklyTimesheet) => {
+    // Clone and calculate hours for display
+    const clonedTimesheet = JSON.parse(JSON.stringify(weeklyTimesheet));
+
+    // Ensure dailyEntries exists
+    if (!clonedTimesheet.dailyEntries || !Array.isArray(clonedTimesheet.dailyEntries)) {
+      console.warn('No dailyEntries found in timesheet');
+      setSelectedWeeklyTimesheet(clonedTimesheet);
+      setShowModal(true);
+      return;
+    }
+
+    // Fetch holidays for THIS timesheet's company (not selectedCompany)
+    const timesheetCompanyId = typeof clonedTimesheet.company === 'object'
+      ? clonedTimesheet.company._id
+      : clonedTimesheet.company;
+
+    let timesheetHolidays: any[] = [];
+    try {
+      const year = new Date().getFullYear();
+      const holidaysData = await feathersClient.service('gazetted-holidays').find({
+        query: {
+          company: timesheetCompanyId,
+          year: year,
+          isActive: true,
+          $limit: 100
+        }
+      });
+      timesheetHolidays = holidaysData.data || holidaysData || [];
+      console.log('Fetched holidays for timesheet company:', timesheetCompanyId, timesheetHolidays);
+    } catch (err) {
+      console.error('Error fetching holidays for timesheet:', err);
+    }
+
+    // Try to get client settings from the worker's project
+    let settings: TimesheetSettings = { ...defaultSettings };
+    try {
+      // Get the worker to find their project
+      const worker = clonedTimesheet.worker;
+      if (worker?.project) {
+        const projectId = typeof worker.project === 'object' ? worker.project._id : worker.project;
+        if (projectId) {
+          const project = await feathersClient.service('projects').get(projectId);
+          if (project?.client) {
+            const clientId = typeof project.client === 'object' ? project.client._id : project.client;
+            if (clientId) {
+              const client = await feathersClient.service('clients').get(clientId);
+              if (client?.timesheetSettings) {
+                settings = {
+                  minuteIncrement: client.timesheetSettings.minuteIncrement || 30,
+                  roundingMethod: client.timesheetSettings.roundingMethod || 'nearest',
+                  maxHoursPerDay: client.timesheetSettings.maxHoursPerDay || 8,
+                  maxOTHoursPerDay: client.timesheetSettings.maxOTHoursPerDay || 4,
+                  allowOvertime: client.timesheetSettings.allowOvertime !== false
+                };
+                console.log('Using client timesheet settings:', settings);
+              }
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Could not fetch client settings, using defaults:', error);
+    }
+
+    // Auto-calculate hours for all entries that have clock times
+    // Also check for public holidays using the timesheet's company holidays
+    clonedTimesheet.dailyEntries = clonedTimesheet.dailyEntries.map((entry: any) => {
+      const entryDate = new Date(entry.date);
+      const holiday = isPublicHoliday(entryDate, timesheetHolidays);
+
+      // If it's a public holiday, mark as PH
+      if (holiday && !entry.leaveType) {
+        return {
+          ...entry,
+          isAbsent: true,
+          leaveType: 'PH',
+          notes: holiday.name || 'Public Holiday',
+          normalHours: 0,
+          ot1_5Hours: 0,
+          ot2_0Hours: 0,
+          totalHours: 0
+        };
+      }
+
+      // Check if clockIn and clockOut exist and are truthy
+      if (entry.clockIn && entry.clockOut) {
+        const calculated = calculateHoursFromTimestamps(entry, settings);
+        return {
+          ...entry,
+          normalHours: calculated.normalHours,
+          ot1_5Hours: calculated.ot1_5Hours,
+          ot2_0Hours: calculated.ot2_0Hours,
+          totalHours: calculated.totalHours
+        };
+      }
+      // Ensure default values for entries without clock data
+      return {
+        ...entry,
+        normalHours: entry.normalHours || 0,
+        ot1_5Hours: entry.ot1_5Hours || 0,
+        ot2_0Hours: entry.ot2_0Hours || 0,
+        totalHours: entry.totalHours || 0
+      };
+    });
+
+    // Recalculate totals
+    clonedTimesheet.totalNormalHours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.normalHours || 0), 0);
+    clonedTimesheet.totalOT1_5Hours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.ot1_5Hours || 0), 0);
+    clonedTimesheet.totalOT2_0Hours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.ot2_0Hours || 0), 0);
+    clonedTimesheet.totalHours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.totalHours || 0), 0);
+
+    setSelectedWeeklyTimesheet(clonedTimesheet);
     setShowModal(true);
   };
 
@@ -235,8 +587,168 @@ export default function TimesheetsPage() {
   };
 
   const handleCurrentWeek = () => {
-    // Go to the latest week with data (Nov 23, 2025)
-    setCurrentWeekStart(getMonday(new Date('2025-11-23')));
+    // Go to the current week (this week's Monday)
+    setCurrentWeekStart(getMonday(new Date()));
+  };
+
+  // Check if we're viewing the current week
+  const isCurrentWeek = () => {
+    const currentMonday = getMonday(new Date());
+    return currentWeekStart.toDateString() === currentMonday.toDateString();
+  };
+
+  // Open Generate Timesheet Modal
+  const openGenerateModal = async () => {
+    // Set default week to current week
+    const monday = getMonday(new Date());
+    const year = monday.getFullYear();
+    const month = String(monday.getMonth() + 1).padStart(2, '0');
+    const day = String(monday.getDate()).padStart(2, '0');
+    setGenerateWeekStart(`${year}-${month}-${day}`);
+    setSelectedWorkers([]);
+    setGenerateResults(null);
+
+    // Fetch hourly workers
+    try {
+      const workersResponse = await feathersClient.service('workers').find({
+        query: {
+          company: selectedCompany?._id,
+          paymentType: { $in: ['hourly', 'unit-based'] },
+          $limit: 500
+        }
+      });
+      setHourlyWorkers(workersResponse.data || workersResponse || []);
+    } catch (error) {
+      console.error('Error fetching workers:', error);
+    }
+
+    setShowGenerateModal(true);
+  };
+
+  // Get week end date from start date
+  const getWeekEndFromStart = (startDate: string): string => {
+    const start = new Date(startDate);
+    const end = new Date(start);
+    end.setDate(end.getDate() + 6);
+    return end.toLocaleDateString('en-MY', { month: 'short', day: 'numeric', year: 'numeric' });
+  };
+
+  // Handle worker selection toggle
+  const toggleWorkerSelection = (workerId: string) => {
+    setSelectedWorkers(prev =>
+      prev.includes(workerId)
+        ? prev.filter(id => id !== workerId)
+        : [...prev, workerId]
+    );
+  };
+
+  // Select all workers
+  const selectAllWorkers = () => {
+    setSelectedWorkers(hourlyWorkers.map(w => w._id));
+  };
+
+  // Deselect all workers
+  const deselectAllWorkers = () => {
+    setSelectedWorkers([]);
+  };
+
+  // Handle Generate Timesheets submission
+  const handleGenerateTimesheets = async () => {
+    if (!generateWeekStart || selectedWorkers.length === 0) {
+      alert('Please select a week and at least one employee');
+      return;
+    }
+
+    setIsGenerating(true);
+    setGenerateResults(null);
+
+    const created: string[] = [];
+    const skipped: string[] = [];
+
+    const weekStart = new Date(generateWeekStart);
+    weekStart.setHours(0, 0, 0, 0);
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 6);
+    weekEnd.setHours(23, 59, 59, 999);
+
+    // Generate empty daily entries
+    const generateDailyEntries = () => {
+      const entries = [];
+      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      for (let i = 0; i < 7; i++) {
+        const date = new Date(weekStart);
+        date.setDate(date.getDate() + i);
+        entries.push({
+          date: date.toISOString(),
+          dayOfWeek: days[i],
+          clockIn: null,
+          clockOut: null,
+          lunchOut: null,
+          lunchIn: null,
+          normalHours: 0,
+          ot1_5Hours: 0,
+          ot2_0Hours: 0,
+          totalHours: 0,
+          checkInMethod: 'manual',
+          notes: null,
+          isAbsent: false,
+          leaveType: null
+        });
+      }
+      return entries;
+    };
+
+    for (const workerId of selectedWorkers) {
+      const worker = hourlyWorkers.find(w => w._id === workerId);
+      const workerName = worker ? `${worker.firstName} ${worker.lastName}` : workerId;
+
+      try {
+        // Check if timesheet already exists
+        const existingResponse = await feathersClient.service('timesheets').find({
+          query: {
+            company: selectedCompany?._id,
+            worker: workerId,
+            weekStartDate: weekStart.toISOString(),
+            $limit: 1
+          }
+        });
+
+        const existing = existingResponse.data || existingResponse;
+        if (existing.length > 0) {
+          skipped.push(workerName);
+          continue;
+        }
+
+        // Create new timesheet
+        await feathersClient.service('timesheets').create({
+          company: selectedCompany?._id,
+          worker: workerId,
+          weekStartDate: weekStart.toISOString(),
+          weekEndDate: weekEnd.toISOString(),
+          dailyEntries: generateDailyEntries(),
+          totalNormalHours: 0,
+          totalOT1_5Hours: 0,
+          totalOT2_0Hours: 0,
+          totalHours: 0,
+          status: 'draft'
+        });
+
+        created.push(workerName);
+      } catch (error: any) {
+        console.error(`Error creating timesheet for ${workerName}:`, error);
+        skipped.push(`${workerName} (error)`);
+      }
+    }
+
+    setGenerateResults({ created, skipped });
+    setIsGenerating(false);
+
+    // Refresh the timesheets list if we created any for the current week
+    if (created.length > 0) {
+      // Trigger refetch by updating the week
+      const newWeekStart = new Date(generateWeekStart);
+      setCurrentWeekStart(getMonday(newWeekStart));
+    }
   };
 
   const handleGeneratePDF = (timesheet: WeeklyTimesheet) => {
@@ -253,13 +765,64 @@ export default function TimesheetsPage() {
     window.open(pdfUrl, '_blank');
   };
 
-  const pendingCount = weeklyTimesheets.filter(t => t.status === 'submitted').length;
-  const approvedCount = weeklyTimesheets.filter(t => t.status === 'approved_admin').length;
-  const totalHours = weeklyTimesheets.reduce((sum, t) => sum + (t.totalHours || 0), 0);
+  // Helper to calculate total hours for a timesheet (for table display)
+  const calculateTimesheetHours = (timesheet: WeeklyTimesheet) => {
+    let totalNormal = 0;
+    let totalOT1_5 = 0;
+    let totalOT2_0 = 0;
+    let totalHrs = 0;
+
+    if (!timesheet.dailyEntries) return { totalNormal, totalOT1_5, totalOT2_0, totalHrs };
+
+    for (const entry of timesheet.dailyEntries) {
+      if (entry.clockIn && entry.clockOut) {
+        const calculated = calculateHoursFromTimestamps(entry);
+        totalNormal += calculated.normalHours;
+        totalOT1_5 += calculated.ot1_5Hours;
+        totalOT2_0 += calculated.ot2_0Hours;
+        totalHrs += calculated.totalHours;
+      }
+    }
+
+    return { totalNormal, totalOT1_5, totalOT2_0, totalHrs };
+  };
+
+  const pendingCount = weeklyTimesheets.filter(t => t.status === 'draft' || t.status === 'submitted').length;
+  const verifiedCount = weeklyTimesheets.filter(t => t.status === 'verified' || t.status === 'approved_admin' || t.status === 'approved').length;
+
+  // Calculate total hours across all timesheets
+  const totalHours = weeklyTimesheets.reduce((sum, t) => {
+    const calc = calculateTimesheetHours(t);
+    return sum + calc.totalHrs;
+  }, 0);
 
   // Handler functions for admin actions
   const handleEditTimesheet = (timesheet: any) => {
-    setEditingTimesheet(JSON.parse(JSON.stringify(timesheet))); // Deep clone
+    // Deep clone the timesheet
+    const clonedTimesheet = JSON.parse(JSON.stringify(timesheet));
+
+    // Auto-calculate hours for all entries that have clock times
+    clonedTimesheet.dailyEntries = clonedTimesheet.dailyEntries.map((entry: any) => {
+      if (entry.clockIn && entry.clockOut) {
+        const calculated = calculateHoursFromTimestamps(entry);
+        return {
+          ...entry,
+          normalHours: calculated.normalHours,
+          ot1_5Hours: calculated.ot1_5Hours,
+          ot2_0Hours: calculated.ot2_0Hours,
+          totalHours: calculated.totalHours
+        };
+      }
+      return entry;
+    });
+
+    // Recalculate totals
+    clonedTimesheet.totalNormalHours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.normalHours || 0), 0);
+    clonedTimesheet.totalOT1_5Hours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.ot1_5Hours || 0), 0);
+    clonedTimesheet.totalOT2_0Hours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.ot2_0Hours || 0), 0);
+    clonedTimesheet.totalHours = clonedTimesheet.dailyEntries.reduce((sum: number, e: any) => sum + (e.totalHours || 0), 0);
+
+    setEditingTimesheet(clonedTimesheet);
     setIsEditMode(true);
   };
 
@@ -274,7 +837,7 @@ export default function TimesheetsPage() {
       console.log('Editing timesheet:', editingTimesheet);
 
       // Prepare the update data
-      const updateData = {
+      const updateData: any = {
         dailyEntries: editingTimesheet.dailyEntries,
         totalNormalHours: editingTimesheet.totalNormalHours,
         totalOT1_5Hours: editingTimesheet.totalOT1_5Hours,
@@ -294,17 +857,17 @@ export default function TimesheetsPage() {
 
       console.log('Updated timesheet:', updatedTimesheet);
 
-      // Update the selected timesheet if it's the same one being edited
-      if (selectedWeeklyTimesheet?._id === editingTimesheet._id) {
-        setSelectedWeeklyTimesheet(updatedTimesheet);
-      }
+      // Update the selected timesheet with the saved data (stay in modal)
+      setSelectedWeeklyTimesheet(updatedTimesheet);
+      setEditingTimesheet(updatedTimesheet); // Keep editing with fresh data
       setIsEditMode(false);
-      setEditingTimesheet(null);
-      alert('Timesheet updated successfully!');
 
-      // Refresh the data
-      window.location.reload();
-    } catch (error) {
+      // Show success message (brief toast-style)
+      alert('✅ Timesheet saved successfully!');
+
+      // Invalidate the query to refresh the list in the background
+      // The modal stays open with the updated data
+    } catch (error: any) {
       console.error('Error updating timesheet:', error);
       alert(`Failed to update timesheet: ${error.message || 'Please try again.'}`);
     }
@@ -313,51 +876,6 @@ export default function TimesheetsPage() {
   const handleCancelEdit = () => {
     setIsEditMode(false);
     setEditingTimesheet(null);
-  };
-
-  const calculateHoursFromTimestamps = (entry: any) => {
-    if (!entry.clockIn || !entry.clockOut) {
-      return { normalHours: 0, ot1_5Hours: 0, ot2_0Hours: 0, totalHours: 0 };
-    }
-
-    const clockIn = new Date(entry.clockIn);
-    const clockOut = new Date(entry.clockOut);
-    const lunchOut = entry.lunchOut ? new Date(entry.lunchOut) : null;
-    const lunchIn = entry.lunchIn ? new Date(entry.lunchIn) : null;
-
-    // Calculate total worked time in hours
-    let totalMinutes = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60);
-
-    // Subtract lunch break if both lunch times are provided
-    if (lunchOut && lunchIn && lunchIn > lunchOut) {
-      const lunchMinutes = (lunchIn.getTime() - lunchOut.getTime()) / (1000 * 60);
-      totalMinutes -= lunchMinutes;
-    }
-
-    const totalHours = totalMinutes / 60;
-
-    // Calculate normal and overtime hours
-    let normalHours = 0;
-    let ot1_5Hours = 0;
-    let ot2_0Hours = 0;
-
-    if (totalHours <= 8) {
-      normalHours = totalHours;
-    } else if (totalHours <= 10) {
-      normalHours = 8;
-      ot1_5Hours = totalHours - 8;
-    } else {
-      normalHours = 8;
-      ot1_5Hours = 2;
-      ot2_0Hours = totalHours - 10;
-    }
-
-    return {
-      normalHours: Math.max(0, normalHours),
-      ot1_5Hours: Math.max(0, ot1_5Hours),
-      ot2_0Hours: Math.max(0, ot2_0Hours),
-      totalHours: Math.max(0, totalHours)
-    };
   };
 
   const handleEditFieldChange = (dayIndex: number, field: string, value: any) => {
@@ -394,20 +912,20 @@ export default function TimesheetsPage() {
     setEditingTimesheet(updatedTimesheet);
   };
 
-  const handleApproveTimesheet = async (timesheetId: string) => {
+  const handleVerifyTimesheet = async (timesheetId: string) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3030/timesheets/${timesheetId}/approve`, {
+      const token = localStorage.getItem('feathers-jwt');
+      const response = await fetch(`${API_URL}/timesheets/${timesheetId}/verify`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ comments: 'Approved via dashboard' })
+        body: JSON.stringify({ comments: 'Verified via dashboard' })
       });
 
       if (response.ok) {
-        alert('✅ Timesheet approved successfully!');
+        alert('✅ Timesheet verified successfully!');
         // Refresh the data
         fetchWeeklyTimesheets();
         setShowModal(false);
@@ -427,7 +945,7 @@ export default function TimesheetsPage() {
 
     try {
       const token = localStorage.getItem('token');
-      const response = await fetch(`http://localhost:3030/timesheets/${timesheetId}/reject`, {
+      const response = await fetch(`${API_URL}/timesheets/${timesheetId}/reject`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -461,9 +979,21 @@ export default function TimesheetsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Timesheets</h1>
-        <p className="text-gray-600 mt-2">Weekly timesheet view with billing details</p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Timesheets</h1>
+          <p className="text-gray-600 mt-2">Weekly timesheet view with billing details</p>
+        </div>
+        {/* Generate Timesheet Button - Only for Agent/Subcon */}
+        {user && ['admin', 'agent', 'subcon-admin'].includes(user.role) && (
+          <button
+            onClick={openGenerateModal}
+            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+          >
+            <CalendarDaysIcon className="h-5 w-5" />
+            Generate Timesheets
+          </button>
+        )}
       </div>
 
       {/* Week Navigation */}
@@ -480,12 +1010,19 @@ export default function TimesheetsPage() {
             {' - '}
             {new Date(currentWeekStart.getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-MY', { month: 'long', day: 'numeric', year: 'numeric' })}
           </div>
-          <button
-            onClick={handleCurrentWeek}
-            className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-1"
-          >
-            Go to Latest Week
-          </button>
+          {isCurrentWeek() ? (
+            <span className="text-sm text-green-600 font-medium mt-1 flex items-center gap-1">
+              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+              Current Week
+            </span>
+          ) : (
+            <button
+              onClick={handleCurrentWeek}
+              className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-1"
+            >
+              ← Go to Current Week
+            </button>
+          )}
         </div>
         <button
           onClick={handleNextWeek}
@@ -518,8 +1055,8 @@ export default function TimesheetsPage() {
         <div className="bg-green-50 rounded-lg shadow-sm border border-green-100 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-green-600 font-medium">Approved</p>
-              <p className="text-xl font-bold text-green-900 mt-1">{approvedCount}</p>
+              <p className="text-xs text-green-600 font-medium">Verified</p>
+              <p className="text-xl font-bold text-green-900 mt-1">{verifiedCount}</p>
             </div>
             <CheckCircleIcon className="h-8 w-8 text-green-300" />
           </div>
@@ -562,6 +1099,8 @@ export default function TimesheetsPage() {
           <tbody className="bg-white divide-y divide-gray-200">
             {weeklyTimesheets.map((weeklyTimesheet) => {
               const totalDays = weeklyTimesheet.dailyEntries.filter(d => !d.isAbsent).length;
+              // Calculate hours on the fly for display
+              const calcHours = calculateTimesheetHours(weeklyTimesheet);
 
               return (
                 <tr key={weeklyTimesheet._id} className="hover:bg-gray-50">
@@ -589,13 +1128,13 @@ export default function TimesheetsPage() {
                     <div className="text-xs text-gray-500">{totalDays} days logged</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="text-base font-bold text-gray-900">{weeklyTimesheet.totalHours.toFixed(1)}h</div>
-                    <div className="text-xs text-gray-500">Normal: {weeklyTimesheet.totalNormalHours.toFixed(1)}h</div>
-                    {weeklyTimesheet.totalOT1_5Hours > 0 && (
-                      <div className="text-xs text-yellow-600">OT 1.5x: {weeklyTimesheet.totalOT1_5Hours.toFixed(1)}h</div>
+                    <div className="text-base font-bold text-gray-900">{calcHours.totalHrs.toFixed(1)}h</div>
+                    <div className="text-xs text-gray-500">Normal: {calcHours.totalNormal.toFixed(1)}h</div>
+                    {calcHours.totalOT1_5 > 0 && (
+                      <div className="text-xs text-yellow-600">OT 1.5x: {calcHours.totalOT1_5.toFixed(1)}h</div>
                     )}
-                    {weeklyTimesheet.totalOT2_0Hours > 0 && (
-                      <div className="text-xs text-orange-600">OT 2.0x: {weeklyTimesheet.totalOT2_0Hours.toFixed(1)}h</div>
+                    {calcHours.totalOT2_0 > 0 && (
+                      <div className="text-xs text-orange-600">OT 2.0x: {calcHours.totalOT2_0.toFixed(1)}h</div>
                     )}
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -604,13 +1143,27 @@ export default function TimesheetsPage() {
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                    <button
-                      onClick={() => handleViewWorkerWeek(weeklyTimesheet)}
-                      className="flex items-center gap-1 text-indigo-600 hover:text-indigo-900 font-medium ml-auto"
-                    >
-                      <EyeIcon className="h-4 w-4" />
-                      View Week
-                    </button>
+                    <div className="flex items-center gap-2 justify-end">
+                      <button
+                        onClick={() => handleViewWorkerWeek(weeklyTimesheet)}
+                        className="flex items-center gap-1 text-indigo-600 hover:text-indigo-900 font-medium"
+                      >
+                        <EyeIcon className="h-4 w-4" />
+                        View
+                      </button>
+                      {weeklyTimesheet.status === 'draft' && ['admin', 'agent', 'subcon-admin'].includes(user?.role) && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleVerifyTimesheet(weeklyTimesheet._id);
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 bg-green-600 text-white rounded text-xs font-medium hover:bg-green-700"
+                        >
+                          <CheckCircleIcon className="h-3 w-3" />
+                          Verify
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               );
@@ -827,11 +1380,13 @@ export default function TimesheetsPage() {
                     {(isEditMode ? editingTimesheet : selectedWeeklyTimesheet).dailyEntries.map((dayEntry, index) => {
                       const isLeaveDay = dayEntry.leaveType || (dayEntry.isAbsent && !dayEntry.clockIn);
                       const leaveLabel = dayEntry.leaveType || (isLeaveDay ? 'Absent' : '');
+                      const isPH = dayEntry.leaveType === 'PH';
+                      const isMC = dayEntry.leaveType === 'MC';
 
                       return (
                         <tr
                           key={index}
-                          className={`${isLeaveDay ? 'bg-amber-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}
+                          className={`${isPH ? 'bg-red-50' : isMC ? 'bg-blue-50' : isLeaveDay ? 'bg-amber-50' : index % 2 === 0 ? 'bg-white' : 'bg-gray-50'} hover:bg-indigo-50 transition-colors`}
                         >
                           <td className="border-b border-r border-gray-200 px-2 py-1.5 text-xs text-gray-700 text-center">
                             {isEditMode && index === 0 ? (
@@ -870,9 +1425,16 @@ export default function TimesheetsPage() {
                           {isLeaveDay ? (
                             <>
                               <td colSpan={4} className="border-b border-r border-gray-200 px-2 py-1.5 text-center">
-                                <span className="inline-block px-2 py-0.5 bg-amber-200 text-amber-900 rounded-md font-semibold text-xs">
+                                <span className={`inline-block px-2 py-0.5 rounded-md font-semibold text-xs ${
+                                  isPH ? 'bg-red-200 text-red-900' :
+                                  isMC ? 'bg-blue-200 text-blue-900' :
+                                  'bg-amber-200 text-amber-900'
+                                }`}>
                                   {leaveLabel}
                                 </span>
+                                {isPH && dayEntry.notes && (
+                                  <span className="block text-[10px] text-red-600 mt-0.5">{dayEntry.notes}</span>
+                                )}
                               </td>
                               <td className="border-b border-r border-gray-200 px-2 py-1.5 text-xs text-gray-400 text-center">-</td>
                               <td className="border-b border-r border-gray-200 px-2 py-1.5 text-xs text-gray-400 text-center">-</td>
@@ -1002,8 +1564,8 @@ export default function TimesheetsPage() {
               <div className="flex justify-between items-center pt-3 border-t border-gray-200">
                 {/* Status and Action Buttons */}
                 <div className="flex items-center gap-3">
-                  {/* Show Edit/Approve buttons only for admin/subcon-admin */}
-                  {(user?.role === 'admin' || user?.role === 'subcon-admin') && (
+                  {/* Show Edit/Verify buttons for admin/agent/subcon-admin */}
+                  {(user?.role === 'admin' || user?.role === 'agent' || user?.role === 'subcon-admin') && (
                     <>
                       {isEditMode ? (
                         <>
@@ -1031,10 +1593,10 @@ export default function TimesheetsPage() {
                                 Edit
                               </button>
                               <button
-                                onClick={() => handleApproveTimesheet(selectedWeeklyTimesheet._id)}
+                                onClick={() => handleVerifyTimesheet(selectedWeeklyTimesheet._id)}
                                 className="px-4 py-1.5 bg-green-600 text-white rounded-lg text-sm hover:bg-green-700 font-medium transition-colors"
                               >
-                                Approve
+                                Verify
                               </button>
                               <button
                                 onClick={() => handleRejectTimesheet(selectedWeeklyTimesheet._id)}
@@ -1044,9 +1606,9 @@ export default function TimesheetsPage() {
                               </button>
                             </>
                           )}
-                          {selectedWeeklyTimesheet.status === 'approved' && (
+                          {(selectedWeeklyTimesheet.status === 'approved' || selectedWeeklyTimesheet.status === 'verified') && (
                             <span className="px-3 py-1 bg-green-100 text-green-800 rounded-lg text-sm font-medium">
-                              ✅ Approved - Locked
+                              ✅ Verified
                             </span>
                           )}
                           {selectedWeeklyTimesheet.status === 'rejected' && (
@@ -1073,6 +1635,182 @@ export default function TimesheetsPage() {
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Generate Timesheet Modal */}
+      {showGenerateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-700 px-6 py-4 rounded-t-xl">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <CalendarDaysIcon className="h-6 w-6 text-white" />
+                  <h2 className="text-xl font-bold text-white">Generate Timesheets</h2>
+                </div>
+                <button
+                  onClick={() => setShowGenerateModal(false)}
+                  className="text-white hover:text-gray-200"
+                >
+                  <XMarkIcon className="h-6 w-6" />
+                </button>
+              </div>
+              <p className="text-indigo-100 text-sm mt-1">
+                Create empty weekly timesheets for hourly employees
+              </p>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6">
+              {/* Week Selection */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Select Week (Starting Monday)
+                </label>
+                <input
+                  type="date"
+                  value={generateWeekStart}
+                  onChange={(e) => {
+                    // Ensure we always select a Monday
+                    const date = new Date(e.target.value);
+                    const monday = getMonday(date);
+                    const year = monday.getFullYear();
+                    const month = String(monday.getMonth() + 1).padStart(2, '0');
+                    const day = String(monday.getDate()).padStart(2, '0');
+                    setGenerateWeekStart(`${year}-${month}-${day}`);
+                  }}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                />
+                {generateWeekStart && (
+                  <p className="mt-2 text-sm text-gray-500">
+                    Week: <span className="font-medium text-gray-700">
+                      {new Date(generateWeekStart).toLocaleDateString('en-MY', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      {' - '}
+                      {getWeekEndFromStart(generateWeekStart)}
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              {/* Employee Selection */}
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Select Employees (Hourly/Unit-Based)
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={selectAllWorkers}
+                      className="text-xs text-indigo-600 hover:text-indigo-800 font-medium"
+                    >
+                      Select All
+                    </button>
+                    <span className="text-gray-300">|</span>
+                    <button
+                      onClick={deselectAllWorkers}
+                      className="text-xs text-gray-600 hover:text-gray-800 font-medium"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                {hourlyWorkers.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500 bg-gray-50 rounded-lg">
+                    <UserGroupIcon className="h-12 w-12 mx-auto text-gray-300 mb-2" />
+                    <p>No hourly/unit-based employees found</p>
+                  </div>
+                ) : (
+                  <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto">
+                    {hourlyWorkers.map((worker) => (
+                      <label
+                        key={worker._id}
+                        className={`flex items-center gap-3 px-4 py-3 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0 ${
+                          selectedWorkers.includes(worker._id) ? 'bg-indigo-50' : ''
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={selectedWorkers.includes(worker._id)}
+                          onChange={() => toggleWorkerSelection(worker._id)}
+                          className="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                        />
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">
+                            {worker.firstName} {worker.lastName}
+                          </p>
+                          <p className="text-xs text-gray-500">
+                            {worker.employeeId || 'No ID'} • {worker.paymentType === 'hourly' ? 'Hourly' : 'Unit-Based'}
+                          </p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                )}
+
+                <p className="mt-2 text-sm text-gray-500">
+                  {selectedWorkers.length} of {hourlyWorkers.length} employees selected
+                </p>
+              </div>
+
+              {/* Results */}
+              {generateResults && (
+                <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+                  <h4 className="font-medium text-gray-900">Results</h4>
+                  {generateResults.created.length > 0 && (
+                    <div>
+                      <p className="text-sm text-green-600 font-medium">
+                        ✅ Created ({generateResults.created.length}):
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {generateResults.created.join(', ')}
+                      </p>
+                    </div>
+                  )}
+                  {generateResults.skipped.length > 0 && (
+                    <div>
+                      <p className="text-sm text-yellow-600 font-medium">
+                        ⚠️ Skipped - Already exists ({generateResults.skipped.length}):
+                      </p>
+                      <p className="text-sm text-gray-600 mt-1">
+                        {generateResults.skipped.join(', ')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-gray-50 px-6 py-4 rounded-b-xl flex items-center justify-end gap-3">
+              <button
+                onClick={() => setShowGenerateModal(false)}
+                className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 font-medium transition-colors"
+              >
+                {generateResults ? 'Close' : 'Cancel'}
+              </button>
+              {!generateResults && (
+                <button
+                  onClick={handleGenerateTimesheets}
+                  disabled={isGenerating || selectedWorkers.length === 0 || !generateWeekStart}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 font-medium transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isGenerating ? (
+                    <>
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+                      Generating...
+                    </>
+                  ) : (
+                    <>
+                      <PlusIcon className="h-5 w-5" />
+                      Generate Timesheets
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
-import { useCompany } from '@/contexts/CompanyContext';
 
 export interface Task {
   _id: string;
@@ -12,17 +11,18 @@ export interface Task {
   updatedAt?: string;
 }
 
-export function useTasks(filters?: { isActive?: boolean }) {
-  const { selectedCompany } = useCompany();
-
+export function useTasks(companyId?: string, filters?: { isActive?: boolean }) {
   return useQuery({
-    queryKey: ['tasks', selectedCompany, filters],
+    queryKey: ['tasks', companyId, filters],
     queryFn: async () => {
       const query: any = {
-        company: selectedCompany,
         $limit: 1000,
         $sort: { createdAt: -1 }
       };
+
+      if (companyId) {
+        query.company = companyId;
+      }
 
       if (filters?.isActive !== undefined) {
         query.isActive = filters.isActive;
@@ -31,7 +31,6 @@ export function useTasks(filters?: { isActive?: boolean }) {
       const response = await feathersClient.service('tasks').find({ query });
       return response.data || response;
     },
-    enabled: !!selectedCompany,
   });
 }
 
@@ -39,7 +38,8 @@ export function useCreateTask() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Task>) => {
+    mutationFn: async (data: Partial<Task> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
       return await feathersClient.service('tasks').create(data);
     },
     onSuccess: () => {

@@ -7,7 +7,7 @@ module.exports = function (app) {
   const options = {
     Model: Company,
     paginate: app.get('paginate'),
-    whitelist: ['$populate']
+    whitelist: ['$populate', '$or', '$in']
   };
 
   // Initialize our service with any options it requires

@@ -10,7 +10,8 @@ class Timesheets extends Service {
 
   // Override find to filter by company for subcon-admin
   async find(params) {
-    if (params.user && params.user.role === 'subcon-admin') {
+    // Skip filtering for internal calls
+    if (params.provider && params.user && params.user.role === 'subcon-admin') {
       params.query = params.query || {};
       params.query.company = params.user.company;
     }
@@ -21,7 +22,8 @@ class Timesheets extends Service {
   async get(id, params) {
     const timesheet = await super.get(id, params);
 
-    if (params.user && params.user.role === 'subcon-admin') {
+    // Skip access check for internal calls
+    if (params.provider && params.user && params.user.role === 'subcon-admin') {
       if (timesheet.company.toString() !== params.user.company.toString()) {
         throw new Error('Unauthorized access to timesheet');
       }
@@ -32,19 +34,26 @@ class Timesheets extends Service {
 
   // Override create with conflict detection
   async create(data, params) {
+    // Skip checks for internal calls (no provider)
+    const isInternalCall = !params.provider;
+
     // Auto-assign company for subcon-admin
     if (params.user && params.user.role === 'subcon-admin') {
       data.company = params.user.company;
     }
 
-    // Verify worker belongs to company
+    // Verify worker belongs to company (skip for internal calls if company already set)
     const worker = await Worker.findById(data.worker);
-    if (!worker || worker.company.toString() !== data.company.toString()) {
-      throw new Error('Worker does not belong to this company');
+    if (!isInternalCall) {
+      if (!worker || worker.company.toString() !== data.company.toString()) {
+        throw new Error('Worker does not belong to this company');
+      }
     }
 
-    // Set created by
-    data.createdBy = params.user._id;
+    // Set created by (only if user exists)
+    if (params.user) {
+      data.createdBy = params.user._id;
+    }
 
     // Calculate total hours if not provided
     if (!data.totalHours) {
@@ -69,17 +78,20 @@ class Timesheets extends Service {
 
   // Override patch to check permissions and update conflicts
   async patch(id, data, params) {
-    const existing = await this.get(id, params);
+    // For internal calls, get without user checks
+    const existing = params.provider ? await this.get(id, params) : await super.get(id, params);
 
-    // Check company access for subcon-admin
-    if (params.user && params.user.role === 'subcon-admin') {
+    // Check company access for subcon-admin (skip for internal calls)
+    if (params.provider && params.user && params.user.role === 'subcon-admin') {
       if (existing.company.toString() !== params.user.company.toString()) {
         throw new Error('Unauthorized access to timesheet');
       }
     }
 
-    // Set last modified by
-    data.lastModifiedBy = params.user._id;
+    // Set last modified by (only if user exists)
+    if (params.user) {
+      data.lastModifiedBy = params.user._id;
+    }
 
     // Recalculate total hours if hours changed
     if (data.normalHours !== undefined || data.ot1_5Hours !== undefined || data.ot2_0Hours !== undefined) {
@@ -110,30 +122,35 @@ class Timesheets extends Service {
     return this.patch(id, { isDeleted: true }, params);
   }
 
-  // Custom method: Approve timesheet
-  async approve(id, params) {
+  // Custom method: Verify timesheet
+  async verify(id, params) {
     const timesheet = await this.get(id, params);
     const user = params.user;
 
-    if (!['subcon-admin', 'admin'].includes(user.role)) {
-      throw new Error('Unauthorized to approve timesheets');
+    if (!['subcon-admin', 'admin', 'agent'].includes(user.role)) {
+      throw new Error('Unauthorized to verify timesheets');
     }
 
-    if (timesheet.status === 'approved') {
-      throw new Error('Timesheet is already approved');
+    if (timesheet.status === 'verified' || timesheet.status === 'approved') {
+      throw new Error('Timesheet is already verified');
     }
 
     if (timesheet.status === 'cancelled') {
-      throw new Error('Cannot approve cancelled timesheet');
+      throw new Error('Cannot verify cancelled timesheet');
     }
 
-    console.log(`✅ Timesheet approved by ${user.firstName} ${user.lastName} (${user.role})`);
+    console.log(`✅ Timesheet verified by ${user.firstName} ${user.lastName} (${user.role})`);
 
     return this.patch(id, {
-      status: 'approved',
-      approvedBy: user._id,
-      approvedAt: new Date()
+      status: 'verified',
+      verifiedBy: user._id,
+      verifiedAt: new Date()
     }, params);
+  }
+
+  // Custom method: Approve timesheet (alias for verify, for backward compatibility)
+  async approve(id, params) {
+    return this.verify(id, params);
   }
 
   // Custom method: Reject timesheet

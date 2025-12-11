@@ -123,7 +123,7 @@ exports.Loans = class Loans extends Service {
       params.query.$populate = [
         {
           path: 'worker',
-          select: 'firstName lastName employeeId'
+          select: 'firstName lastName employeeId profilePicture'
         },
         {
           path: 'company',
@@ -154,7 +154,7 @@ exports.Loans = class Loans extends Service {
       params.query.$populate = [
         {
           path: 'worker',
-          select: 'firstName lastName employeeId email phone'
+          select: 'firstName lastName employeeId email phone profilePicture'
         },
         {
           path: 'company',

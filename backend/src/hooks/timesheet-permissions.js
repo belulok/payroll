@@ -2,7 +2,7 @@ const { Forbidden } = require('@feathersjs/errors');
 
 /**
  * Hook to check if user has permission to edit timesheets
- * Only subcon-admin and admin roles can edit timesheets
+ * Admin, agent, and subcon-admin roles can edit timesheets
  * Approved timesheets cannot be edited
  */
 function checkTimesheetEditPermissions() {
@@ -14,6 +14,11 @@ function checkTimesheetEditPermissions() {
       return context;
     }
 
+    // Skip for internal calls (no provider = internal service call)
+    if (!params.provider) {
+      return context;
+    }
+
     // Check if user is authenticated
     if (!params.user) {
       throw new Forbidden('Authentication required to edit timesheets');
@@ -21,11 +26,11 @@ function checkTimesheetEditPermissions() {
 
     const userRole = params.user.role;
 
-    // Allow admin and subcon-admin to edit timesheets
-    const allowedRoles = ['admin', 'subcon-admin'];
+    // Allow admin, agent, and subcon-admin to edit timesheets
+    const allowedRoles = ['admin', 'agent', 'subcon-admin'];
 
     if (!allowedRoles.includes(userRole)) {
-      throw new Forbidden(`Access denied. Only ${allowedRoles.join(' and ')} can edit timesheets. Your role: ${userRole}`);
+      throw new Forbidden(`Access denied. Only ${allowedRoles.join(', ')} can edit timesheets. Your role: ${userRole}`);
     }
 
     // Check if timesheet is approved (cannot be edited once approved)
@@ -55,7 +60,8 @@ function checkTimesheetEditPermissions() {
 /**
  * Hook to check if user has permission to view timesheets
  * Workers can only view their own timesheets
- * Subcon-admin can view timesheets from their company
+ * Subcon-admin/clerk can view timesheets from their company
+ * Agent can view timesheets from their assigned companies
  * Admin can view all timesheets
  */
 function checkTimesheetViewPermissions() {
@@ -64,6 +70,11 @@ function checkTimesheetViewPermissions() {
 
     // Only apply to GET operations
     if (method !== 'find' && method !== 'get') {
+      return context;
+    }
+
+    // Skip for internal calls (no provider = internal service call)
+    if (!params.provider) {
       return context;
     }
 
@@ -79,8 +90,19 @@ function checkTimesheetViewPermissions() {
       return context;
     }
 
-    // Subcon-admin can view timesheets from their company
-    if (userRole === 'subcon-admin') {
+    // Agent can view timesheets from their assigned companies
+    if (userRole === 'agent') {
+      if (params.user.companies && params.user.companies.length > 0) {
+        // Filter by assigned companies
+        params.query = params.query || {};
+        params.query.company = { $in: params.user.companies };
+      }
+      // If agent has no companies assigned, they can still access (will return empty)
+      return context;
+    }
+
+    // Subcon-admin and subcon-clerk can view timesheets from their company
+    if (userRole === 'subcon-admin' || userRole === 'subcon-clerk') {
       if (params.user.company) {
         // Add company filter to query
         params.query = params.query || {};
@@ -119,6 +141,11 @@ function validateTimesheetCompany() {
       return context;
     }
 
+    // Skip for internal calls (no provider = internal service call)
+    if (!params.provider) {
+      return context;
+    }
+
     // Check if user is authenticated
     if (!params.user) {
       return context;
@@ -128,6 +155,20 @@ function validateTimesheetCompany() {
 
     // Admin can create/edit timesheets for any company
     if (userRole === 'admin') {
+      return context;
+    }
+
+    // Agent can create/edit timesheets for their assigned companies
+    if (userRole === 'agent') {
+      if (params.user.companies && params.user.companies.length > 0) {
+        // Ensure the timesheet belongs to one of the agent's companies
+        if (data && data.company) {
+          const companyIds = params.user.companies.map(c => c.toString());
+          if (!companyIds.includes(data.company.toString())) {
+            throw new Forbidden('Cannot create/edit timesheets for companies not assigned to you');
+          }
+        }
+      }
       return context;
     }
 

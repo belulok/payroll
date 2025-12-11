@@ -17,10 +17,23 @@ module.exports = function (app) {
   // Register hooks
   service.hooks(hooks);
 
-  // Add custom routes for approve/reject
+  // Add custom routes for verify/approve/reject
+  app.post('/timesheets/:id/verify', async (req, res) => {
+    try {
+      const result = await service.verify(req.params.id, {
+        user: req.user,
+        data: req.body
+      });
+      res.json(result);
+    } catch (error) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // Keep approve as alias for backward compatibility
   app.post('/timesheets/:id/approve', async (req, res) => {
     try {
-      const result = await service.approve(req.params.id, {
+      const result = await service.verify(req.params.id, {
         user: req.user,
         data: req.body
       });

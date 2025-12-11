@@ -1,42 +1,22 @@
 const { authenticate } = require('@feathersjs/authentication').hooks;
-const { iff, isProvider, disallow } = require('feathers-hooks-common');
+const { disallow } = require('feathers-hooks-common');
+const { filterByCompany, verifyAgentAccess } = require('../../hooks/filter-by-company');
 
 // Permission check hook
 const checkLoanPermissions = () => {
   return async (context) => {
     const { user } = context.params;
-    
+
     if (!user) {
       throw new Error('Authentication required');
     }
 
-    // Admin and agent can access all loans
-    if (user.role === 'admin' || user.role === 'agent') {
-      return context;
+    // Admin, agent, and subcon-admin can access loans
+    if (!['admin', 'agent', 'subcon-admin'].includes(user.role)) {
+      throw new Error('Insufficient permissions to access loans');
     }
 
-    // Subcon-admin can only access their company's loans
-    if (user.role === 'subcon-admin') {
-      if (context.method === 'create') {
-        context.data.company = user.company;
-      } else if (context.method === 'find') {
-        context.params.query.company = user.company;
-      } else if (context.id) {
-        // For get, patch, remove - check if loan belongs to user's company
-        const loan = await context.app.service('loans').Model.findById(context.id);
-        if (loan && loan.company.toString() !== user.company.toString()) {
-          throw new Error('Unauthorized access to loan');
-        }
-      }
-      return context;
-    }
-
-    // Workers cannot access loans service directly
-    if (user.role === 'worker') {
-      throw new Error('Workers cannot access loans directly');
-    }
-
-    throw new Error('Insufficient permissions');
+    return context;
   };
 };
 
@@ -44,7 +24,7 @@ const checkLoanPermissions = () => {
 const validateLoanData = () => {
   return async (context) => {
     const { data } = context;
-    
+
     if (context.method === 'create' || context.method === 'patch') {
       // Validate principal amount
       if (data.principalAmount !== undefined && data.principalAmount <= 0) {
@@ -61,7 +41,7 @@ const validateLoanData = () => {
         if (data.installmentType === 'fixed_amount' && (!data.installmentAmount || data.installmentAmount <= 0)) {
           throw new Error('Installment amount must be greater than 0');
         }
-        
+
         if (data.installmentType === 'fixed_count' && (!data.installmentCount || data.installmentCount <= 0)) {
           throw new Error('Installment count must be greater than 0');
         }
@@ -71,18 +51,11 @@ const validateLoanData = () => {
         }
       }
 
-      // Validate worker exists and belongs to same company
+      // Validate worker exists
       if (data.worker) {
         const worker = await context.app.service('workers').get(data.worker);
         if (!worker) {
           throw new Error('Worker not found');
-        }
-        
-        const loanCompany = data.company || context.params.user.company;
-        const workerCompany = typeof worker.company === 'object' ? worker.company._id : worker.company;
-        
-        if (workerCompany.toString() !== loanCompany.toString()) {
-          throw new Error('Worker does not belong to the specified company');
         }
       }
     }
@@ -91,32 +64,59 @@ const validateLoanData = () => {
   };
 };
 
-// Auto-populate related data
-const populateData = () => {
+// Populate worker and company in after hooks
+const populateAfter = () => {
   return async (context) => {
-    if (context.method === 'find' || context.method === 'get') {
-      if (!context.params.query) context.params.query = {};
-      
-      context.params.query.$populate = [
-        {
-          path: 'worker',
-          select: 'firstName lastName employeeId email phone'
-        },
-        {
-          path: 'company',
-          select: 'name'
-        },
-        {
-          path: 'createdBy',
-          select: 'firstName lastName'
-        },
-        {
-          path: 'approvedBy',
-          select: 'firstName lastName'
+    const { app, result } = context;
+
+    const populate = async (loan) => {
+      if (!loan) return loan;
+
+      // Populate worker
+      if (loan.worker && typeof loan.worker !== 'object') {
+        try {
+          const worker = await app.service('workers').get(loan.worker, { provider: undefined });
+          loan.worker = {
+            _id: worker._id,
+            firstName: worker.firstName,
+            lastName: worker.lastName,
+            employeeId: worker.employeeId,
+            email: worker.email,
+            phone: worker.phone,
+            profilePicture: worker.profilePicture
+          };
+        } catch (e) {
+          console.error('Error populating worker for loan:', e.message);
         }
-      ];
+      }
+
+      // Populate company
+      if (loan.company && typeof loan.company !== 'object') {
+        try {
+          const company = await app.service('companies').get(loan.company, { provider: undefined });
+          loan.company = {
+            _id: company._id,
+            name: company.name
+          };
+        } catch (e) {
+          console.error('Error populating company for loan:', e.message);
+        }
+      }
+
+      return loan;
+    };
+
+    if (result) {
+      if (result.data) {
+        // Paginated result
+        await Promise.all(result.data.map(populate));
+      } else if (Array.isArray(result)) {
+        await Promise.all(result.map(populate));
+      } else {
+        await populate(result);
+      }
     }
-    
+
     return context;
   };
 };
@@ -124,21 +124,21 @@ const populateData = () => {
 module.exports = {
   before: {
     all: [authenticate('jwt')],
-    find: [checkLoanPermissions(), populateData()],
-    get: [checkLoanPermissions(), populateData()],
-    create: [checkLoanPermissions(), validateLoanData()],
+    find: [checkLoanPermissions(), filterByCompany()],
+    get: [checkLoanPermissions(), filterByCompany()],
+    create: [checkLoanPermissions(), filterByCompany(), validateLoanData()],
     update: [disallow()],
-    patch: [checkLoanPermissions(), validateLoanData()],
-    remove: [checkLoanPermissions()]
+    patch: [checkLoanPermissions(), filterByCompany(), validateLoanData()],
+    remove: [checkLoanPermissions(), filterByCompany()]
   },
 
   after: {
     all: [],
-    find: [],
-    get: [],
-    create: [],
+    find: [populateAfter()],
+    get: [verifyAgentAccess(), populateAfter()],
+    create: [populateAfter()],
     update: [],
-    patch: [],
+    patch: [populateAfter()],
     remove: []
   },
 

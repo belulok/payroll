@@ -20,6 +20,16 @@ const tasks = require('./tasks/tasks.service.js');
 const loans = require('./loans/loans.service.js');
 const invoices = require('./invoices/invoices.service.js');
 const compensationConfigs = require('./compensation-configs/compensation-configs.service.js');
+const workerDocuments = require('./worker-documents/worker-documents.service.js');
+const systemSettings = require('./system-settings/system-settings.service.js');
+const emailService = require('./email/email.service.js');
+const documentReminder = require('./document-reminder/document-reminder.service.js');
+const uploads = require('./uploads/uploads.service.js');
+const notifications = require('./notifications/notifications.service.js');
+const qrCodes = require('./qr-codes/qr-codes.service.js');
+const workerCheckin = require('./worker-checkin/worker-checkin.service.js');
+const attendance = require('./attendance/attendance.service.js');
+const weeklyTimesheetGenerator = require('../cron/weekly-timesheet-generator.js');
 
 module.exports = function (app) {
   app.configure(users);
@@ -36,6 +46,15 @@ module.exports = function (app) {
   app.configure(invoices);
   app.configure(compensationConfigs);
   app.configure(workers);
+  app.configure(workerDocuments);
+  app.configure(systemSettings);
+  app.configure(emailService);
+  app.configure(documentReminder);
+  app.configure(uploads);
+  app.configure(notifications);
+  app.configure(qrCodes);
+  app.configure(attendance);
+  app.configure(workerCheckin);
   app.configure(timesheets);
   app.configure(payrollRecords);
   app.configure(leaveTypes);
@@ -44,5 +63,8 @@ module.exports = function (app) {
   app.configure(gazettedHolidays);
   app.configure(unitRecords);
   app.configure(payroll);
+
+  // Cron jobs
+  app.configure(weeklyTimesheetGenerator);
 };
 

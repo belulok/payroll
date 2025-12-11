@@ -1022,15 +1022,15 @@ export default function ClientsPage() {
 
   // Use TanStack Query hooks for Clients
   const { data: clients = [], isLoading: loadingClients } = useClients(selectedCompany?._id);
-  const createClient = useCreateClient(selectedCompany?._id);
-  const updateClient = useUpdateClient(selectedCompany?._id);
-  const deleteClient = useDeleteClient(selectedCompany?._id);
+  const createClient = useCreateClient();
+  const updateClient = useUpdateClient();
+  const deleteClient = useDeleteClient();
 
   // Use TanStack Query hooks for Projects
   const { data: projects = [], isLoading: loadingProjects } = useProjects(selectedCompany?._id);
-  const createProject = useCreateProject(selectedCompany?._id);
-  const updateProject = useUpdateProject(selectedCompany?._id);
-  const deleteProject = useDeleteProject(selectedCompany?._id);
+  const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
+  const deleteProject = useDeleteProject();
 
   // Tab state
   const [activeTab, setActiveTab] = useState<'clients' | 'projects'>('clients');
@@ -1077,14 +1077,23 @@ export default function ClientsPage() {
           data: clientData
         });
       } else {
-        await createClient.mutateAsync(clientData);
+        // For create, ensure company is set
+        const companyId = clientData.company || selectedCompany?._id;
+        if (!companyId) {
+          alert('Please select a company first');
+          return;
+        }
+        await createClient.mutateAsync({
+          ...clientData,
+          company: companyId
+        } as any);
       }
       setShowAddClientModal(false);
       setShowEditClientModal(false);
       setSelectedClient(null);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving client:', error);
-      alert('Failed to save client');
+      alert(error?.message || 'Failed to save client');
     }
   };
 
@@ -1112,27 +1121,29 @@ export default function ClientsPage() {
 
   const handleSaveProject = async (projectData: Partial<Project>) => {
     try {
-      console.log('💾 handleSaveProject received data:', projectData);
-      console.log('💾 Client field in data:', projectData.client);
-
       if (selectedProject) {
-        console.log('💾 Updating project:', selectedProject._id);
-        const result = await updateProject.mutateAsync({
+        await updateProject.mutateAsync({
           id: selectedProject._id,
           data: projectData
         });
-        console.log('✅ Update result:', result);
       } else {
-        console.log('💾 Creating new project');
-        const result = await createProject.mutateAsync(projectData);
-        console.log('✅ Create result:', result);
+        // For create, ensure company is set
+        const companyId = projectData.company || selectedCompany?._id;
+        if (!companyId) {
+          alert('Please select a company first');
+          return;
+        }
+        await createProject.mutateAsync({
+          ...projectData,
+          company: companyId
+        } as any);
       }
       setShowAddProjectModal(false);
       setShowEditProjectModal(false);
       setSelectedProject(null);
-    } catch (error) {
-      console.error('❌ Error saving project:', error);
-      alert('Failed to save project');
+    } catch (error: any) {
+      console.error('Error saving project:', error);
+      alert(error?.message || 'Failed to save project');
     }
   };
 

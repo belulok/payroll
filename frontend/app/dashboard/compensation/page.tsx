@@ -33,13 +33,13 @@ export default function CompensationPage() {
   const [successMessage, setSuccessMessage] = useState('');
 
   const { data: config, isLoading: configLoading } = useCompensationConfig(companyId);
-  const { data: jobBands = [], isLoading: jobBandsLoading } = useJobBands(companyId);
-  const { data: workerGroups = [], isLoading: groupsLoading } = useWorkerGroups({ isActive: true });
+  const { data: jobBands = [], isLoading: jobBandsLoading } = useJobBands(companyId, { isActive: true });
+  const { data: workerGroups = [], isLoading: groupsLoading } = useWorkerGroups(companyId, { isActive: true });
   const { data: clients = [], isLoading: clientsLoading } = useClients(companyId);
-  const { data: positions = [], isLoading: positionsLoading } = usePositions({ isActive: true });
+  const { data: positions = [], isLoading: positionsLoading } = usePositions(companyId, { isActive: true });
 
-  const createConfig = useCreateCompensationConfig(companyId);
-  const updateConfig = useUpdateCompensationConfig(companyId);
+  const createConfig = useCreateCompensationConfig();
+  const updateConfig = useUpdateCompensationConfig();
 
   const [benefitConfigs, setBenefitConfigs] = useState<BenefitConfig[]>([]);
   const [deductionConfigs, setDeductionConfigs] = useState<DeductionConfig[]>([]);
@@ -201,8 +201,10 @@ function BenefitsTab({
       ...benefitConfigs,
       {
         configType: 'group', // Default to group
-        annualLeave: 14,
-        sickLeave: 14,
+        leaveEntitlements: [
+          { name: 'Annual Leave', code: 'AL', daysPerYear: 14, isPaid: true, requiresApproval: true, requiresDocument: false },
+          { name: 'Sick Leave', code: 'SL', daysPerYear: 14, isPaid: true, requiresApproval: true, requiresDocument: true }
+        ],
         benefits: []
       }
     ]);
@@ -212,7 +214,7 @@ function BenefitsTab({
     setBenefitConfigs(benefitConfigs.filter((_, i) => i !== index));
   };
 
-  const updateBenefitConfig = (index: number, field: string, value: any) => {
+  const updateBenefitConfig = (index: number, field: string, value: any, extraFields?: Record<string, any>) => {
     const updated = [...benefitConfigs];
     // When switching config type, clear the previous selection
     if (field === 'configType') {
@@ -222,8 +224,39 @@ function BenefitsTab({
         updated[index] = { ...updated[index], configType: 'band', jobBand: undefined, jobBandName: undefined };
       }
     } else {
-      updated[index] = { ...updated[index], [field]: value };
+      updated[index] = { ...updated[index], [field]: value, ...extraFields };
     }
+    setBenefitConfigs(updated);
+  };
+
+  const addLeaveEntitlement = (configIndex: number) => {
+    const updated = [...benefitConfigs];
+    if (!updated[configIndex].leaveEntitlements) {
+      updated[configIndex].leaveEntitlements = [];
+    }
+    updated[configIndex].leaveEntitlements.push({
+      name: '',
+      code: '',
+      daysPerYear: 0,
+      isPaid: true,
+      requiresApproval: true,
+      requiresDocument: false
+    });
+    setBenefitConfigs(updated);
+  };
+
+  const removeLeaveEntitlement = (configIndex: number, leaveIndex: number) => {
+    const updated = [...benefitConfigs];
+    updated[configIndex].leaveEntitlements = updated[configIndex].leaveEntitlements.filter((_, i) => i !== leaveIndex);
+    setBenefitConfigs(updated);
+  };
+
+  const updateLeaveEntitlement = (configIndex: number, leaveIndex: number, field: string, value: any) => {
+    const updated = [...benefitConfigs];
+    updated[configIndex].leaveEntitlements[leaveIndex] = {
+      ...updated[configIndex].leaveEntitlements[leaveIndex],
+      [field]: value
+    };
     setBenefitConfigs(updated);
   };
 
@@ -323,8 +356,7 @@ function BenefitsTab({
                         value={config.group || ''}
                         onChange={(e) => {
                           const selectedGroup = workerGroups.find(g => g._id === e.target.value);
-                          updateBenefitConfig(configIndex, 'group', e.target.value);
-                          updateBenefitConfig(configIndex, 'groupName', selectedGroup?.name);
+                          updateBenefitConfig(configIndex, 'group', e.target.value, { groupName: selectedGroup?.name });
                         }}
                         className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
                       >
@@ -337,11 +369,10 @@ function BenefitsTab({
                       </select>
                     ) : (
                       <select
-                        value={config.jobBand || ''}
+                        value={typeof config.jobBand === 'object' ? (config.jobBand as any)?._id : config.jobBand || ''}
                         onChange={(e) => {
                           const selectedBand = jobBands.find(b => b._id === e.target.value);
-                          updateBenefitConfig(configIndex, 'jobBand', e.target.value);
-                          updateBenefitConfig(configIndex, 'jobBandName', selectedBand?.name);
+                          updateBenefitConfig(configIndex, 'jobBand', e.target.value, { jobBandName: selectedBand?.name });
                         }}
                         className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                       >
@@ -363,32 +394,94 @@ function BenefitsTab({
                 </button>
               </div>
 
-              {/* Leave Entitlements */}
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Annual Leave (days)
+              {/* Dynamic Leave Entitlements */}
+              <div className="border-t pt-4">
+                <div className="flex justify-between items-center mb-3">
+                  <label className="block text-sm font-medium text-gray-700">
+                    Leave Entitlements
                   </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={config.annualLeave}
-                    onChange={(e) => updateBenefitConfig(configIndex, 'annualLeave', parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <button
+                    onClick={() => addLeaveEntitlement(configIndex)}
+                    className="text-sm text-indigo-600 hover:text-indigo-800 flex items-center"
+                  >
+                    <PlusIcon className="h-4 w-4 mr-1" />
+                    Add Leave Type
+                  </button>
                 </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sick Leave (days)
-                  </label>
-                  <input
-                    type="number"
-                    min="0"
-                    value={config.sickLeave}
-                    onChange={(e) => updateBenefitConfig(configIndex, 'sickLeave', parseInt(e.target.value) || 0)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
-                  />
-                </div>
+
+                {(!config.leaveEntitlements || config.leaveEntitlements.length === 0) ? (
+                  <div className="text-sm text-gray-500 italic">No leave types configured. Click "Add Leave Type" to add.</div>
+                ) : (
+                  <div className="space-y-3">
+                    {config.leaveEntitlements.map((leave, leaveIndex) => (
+                      <div key={leaveIndex} className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="grid grid-cols-12 gap-2 items-center">
+                          <input
+                            type="text"
+                            placeholder="Leave Name (e.g., Annual Leave)"
+                            value={leave.name}
+                            onChange={(e) => updateLeaveEntitlement(configIndex, leaveIndex, 'name', e.target.value)}
+                            className="col-span-4 px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                          />
+                          <input
+                            type="text"
+                            placeholder="Code"
+                            value={leave.code}
+                            onChange={(e) => updateLeaveEntitlement(configIndex, leaveIndex, 'code', e.target.value.toUpperCase())}
+                            className="col-span-1 px-3 py-2 border border-gray-300 rounded-lg text-sm uppercase"
+                            maxLength={4}
+                          />
+                          <div className="col-span-2 flex items-center gap-1">
+                            <input
+                              type="number"
+                              placeholder="Days"
+                              value={leave.daysPerYear}
+                              onChange={(e) => updateLeaveEntitlement(configIndex, leaveIndex, 'daysPerYear', parseInt(e.target.value) || 0)}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm"
+                              min="0"
+                            />
+                            <span className="text-xs text-gray-500">days</span>
+                          </div>
+                          <div className="col-span-4 flex items-center gap-3 text-xs">
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={leave.isPaid}
+                                onChange={(e) => updateLeaveEntitlement(configIndex, leaveIndex, 'isPaid', e.target.checked)}
+                                className="h-3 w-3"
+                              />
+                              Paid
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={leave.requiresApproval}
+                                onChange={(e) => updateLeaveEntitlement(configIndex, leaveIndex, 'requiresApproval', e.target.checked)}
+                                className="h-3 w-3"
+                              />
+                              Approval
+                            </label>
+                            <label className="flex items-center gap-1 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={leave.requiresDocument}
+                                onChange={(e) => updateLeaveEntitlement(configIndex, leaveIndex, 'requiresDocument', e.target.checked)}
+                                className="h-3 w-3"
+                              />
+                              Doc
+                            </label>
+                          </div>
+                          <button
+                            onClick={() => removeLeaveEntitlement(configIndex, leaveIndex)}
+                            className="col-span-1 text-red-600 hover:text-red-800 flex justify-center"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Additional Benefits */}
@@ -489,7 +582,7 @@ function DeductionsTab({
     setDeductionConfigs(deductionConfigs.filter((_, i) => i !== index));
   };
 
-  const updateDeductionConfig = (index: number, field: string, value: any) => {
+  const updateDeductionConfig = (index: number, field: string, value: any, extraFields?: Record<string, any>) => {
     const updated = [...deductionConfigs];
     // When switching config type, clear the previous selection
     if (field === 'configType') {
@@ -499,7 +592,7 @@ function DeductionsTab({
         updated[index] = { ...updated[index], configType: 'band', jobBand: undefined, jobBandName: undefined };
       }
     } else {
-      updated[index] = { ...updated[index], [field]: value };
+      updated[index] = { ...updated[index], [field]: value, ...extraFields };
     }
     setDeductionConfigs(updated);
   };
@@ -600,8 +693,7 @@ function DeductionsTab({
                         value={config.group || ''}
                         onChange={(e) => {
                           const selectedGroup = workerGroups.find(g => g._id === e.target.value);
-                          updateDeductionConfig(configIndex, 'group', e.target.value);
-                          updateDeductionConfig(configIndex, 'groupName', selectedGroup?.name);
+                          updateDeductionConfig(configIndex, 'group', e.target.value, { groupName: selectedGroup?.name });
                         }}
                         className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-emerald-500"
                       >
@@ -614,11 +706,10 @@ function DeductionsTab({
                       </select>
                     ) : (
                       <select
-                        value={config.jobBand || ''}
+                        value={typeof config.jobBand === 'object' ? (config.jobBand as any)?._id : config.jobBand || ''}
                         onChange={(e) => {
                           const selectedBand = jobBands.find(b => b._id === e.target.value);
-                          updateDeductionConfig(configIndex, 'jobBand', e.target.value);
-                          updateDeductionConfig(configIndex, 'jobBandName', selectedBand?.name);
+                          updateDeductionConfig(configIndex, 'jobBand', e.target.value, { jobBandName: selectedBand?.name });
                         }}
                         className="w-full max-w-md px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500"
                       >

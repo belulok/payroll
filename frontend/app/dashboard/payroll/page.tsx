@@ -115,8 +115,8 @@ export default function PayrollPage() {
   // Use TanStack Query hooks
   const { data: payrolls = [], isLoading: loading } = usePayrollRecords(selectedCompany?._id);
   const { data: workers = [] } = useWorkers(selectedCompany?._id);
-  const generatePayroll = useGeneratePayroll(selectedCompany?._id);
-  const approvePayroll = useApprovePayroll(selectedCompany?._id);
+  const generatePayroll = useGeneratePayroll();
+  const approvePayroll = useApprovePayroll();
 
   const [filter, setFilter] = useState<string>('all');
   const [showGenerateModal, setShowGenerateModal] = useState(false);

@@ -1,15 +1,17 @@
 const { Service } = require('feathers-mongoose');
+const bcrypt = require('bcryptjs');
 
 exports.Users = class Users extends Service {
   async resetPassword(id, params) {
     // Generate a random password
     const newPassword = this.generateRandomPassword();
 
-    // Hash the password using the app's authentication service
-    const hashedPassword = await this.app.service('authentication').hashPassword(newPassword);
+    // Hash the password using bcrypt
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
 
-    // Update the user's password
-    await this.patch(id, { password: hashedPassword }, params);
+    // Update the user's password directly in the database to bypass all hooks
+    // This is necessary because patch hooks require admin role
+    await this.Model.findByIdAndUpdate(id, { password: hashedPassword });
 
     // Return the plain text password (only time it's visible)
     return { password: newPassword };

@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
-import { useCompany } from '@/contexts/CompanyContext';
 
 export interface JobGrade {
   _id: string;
@@ -16,17 +15,18 @@ export interface JobGrade {
   updatedAt?: string;
 }
 
-export function useJobGrades(filters?: { isActive?: boolean; jobBand?: string }) {
-  const { selectedCompany } = useCompany();
-
+export function useJobGrades(companyId?: string, filters?: { isActive?: boolean; jobBand?: string }) {
   return useQuery({
-    queryKey: ['job-grades', selectedCompany, filters],
+    queryKey: ['job-grades', companyId, filters],
     queryFn: async () => {
       const query: any = {
-        company: selectedCompany,
         $limit: 1000,
         $sort: { level: 1, name: 1 }
       };
+
+      if (companyId) {
+        query.company = companyId;
+      }
 
       if (filters?.isActive !== undefined) {
         query.isActive = filters.isActive;
@@ -39,7 +39,6 @@ export function useJobGrades(filters?: { isActive?: boolean; jobBand?: string })
       const response = await feathersClient.service('job-grades').find({ query });
       return response.data || response;
     },
-    enabled: !!selectedCompany,
   });
 }
 
@@ -47,7 +46,8 @@ export function useCreateJobGrade() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<JobGrade>) => {
+    mutationFn: async (data: Partial<JobGrade> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
       return await feathersClient.service('job-grades').create(data);
     },
     onSuccess: () => {
@@ -81,4 +81,3 @@ export function useDeleteJobGrade() {
     },
   });
 }
-

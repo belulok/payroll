@@ -1,14 +1,27 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
 
+export interface LeaveEntitlement {
+  name: string;        // e.g., "Annual Leave", "Sick Leave", "Maternity Leave"
+  code: string;        // e.g., "AL", "SL", "ML"
+  daysPerYear: number; // Entitlement days per year
+  isPaid: boolean;
+  requiresApproval: boolean;
+  requiresDocument: boolean;
+  description?: string;
+}
+
 export interface BenefitConfig {
   configType: 'group' | 'band'; // Type of configuration
   group?: string; // Worker Group ID (if configType is 'group')
   groupName?: string;
   jobBand?: string; // Job Band ID (if configType is 'band')
   jobBandName?: string;
-  annualLeave: number;
-  sickLeave: number;
+  // Dynamic leave entitlements (replaces hardcoded annualLeave/sickLeave)
+  leaveEntitlements: LeaveEntitlement[];
+  // Legacy fields for backward compatibility
+  annualLeave?: number;
+  sickLeave?: number;
   benefits: Array<{
     name: string;
     description?: string;
@@ -66,45 +79,42 @@ export interface CompensationConfig {
 }
 
 // Get compensation config for a company
-export function useCompensationConfig(companyId: string | undefined) {
+export function useCompensationConfig(companyId?: string) {
   return useQuery({
     queryKey: ['compensation-config', companyId],
     queryFn: async () => {
-      if (!companyId) return null;
+      const query: any = {
+        $limit: 1
+      };
 
-      const response = await feathersClient.service('compensation-configs').find({
-        query: {
-          company: companyId,
-          $limit: 1
-        }
-      });
+      if (companyId) {
+        query.company = companyId;
+      }
 
+      const response = await feathersClient.service('compensation-configs').find({ query });
       const data = response.data || response;
       return data.length > 0 ? data[0] : null;
     },
-    enabled: !!companyId,
   });
 }
 
 // Create compensation config
-export function useCreateCompensationConfig(companyId: string | undefined) {
+export function useCreateCompensationConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<CompensationConfig>) => {
-      return await feathersClient.service('compensation-configs').create({
-        ...data,
-        company: data.company || companyId
-      });
+    mutationFn: async (data: Partial<CompensationConfig> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
+      return await feathersClient.service('compensation-configs').create(data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['compensation-config', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['compensation-config'] });
     },
   });
 }
 
 // Update compensation config
-export function useUpdateCompensationConfig(companyId: string | undefined) {
+export function useUpdateCompensationConfig() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -112,8 +122,7 @@ export function useUpdateCompensationConfig(companyId: string | undefined) {
       return await feathersClient.service('compensation-configs').patch(id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['compensation-config', companyId] });
+      queryClient.invalidateQueries({ queryKey: ['compensation-config'] });
     },
   });
 }
-

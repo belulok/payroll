@@ -19,7 +19,7 @@ const leaveBalanceSchema = new mongoose.Schema({
     ref: 'leave-types',
     required: true
   },
-  
+
   // Balance Information
   year: {
     type: Number,
@@ -42,7 +42,7 @@ const leaveBalanceSchema = new mongoose.Schema({
     type: Number,
     default: 0
   },
-  
+
 }, {
   timestamps: true
 });
@@ -77,6 +77,12 @@ leaveBalanceSchema.methods.approveDays = function(days) {
 
 leaveBalanceSchema.methods.rejectDays = function(days) {
   this.pendingDays -= days;
+  return this.save();
+};
+
+// Cancel approved leave - restore used days back to available
+leaveBalanceSchema.methods.cancelApprovedDays = function(days) {
+  this.usedDays = Math.max(0, this.usedDays - days);
   return this.save();
 };
 

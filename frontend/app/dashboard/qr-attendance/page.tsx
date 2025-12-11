@@ -2,8 +2,19 @@
 
 import { useEffect, useState } from 'react';
 import feathersClient from '@/lib/feathers';
-import { QrCodeIcon, PlusIcon, TrashIcon, ShareIcon, DocumentArrowDownIcon, CalendarIcon, UserGroupIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ArrowPathIcon } from '@heroicons/react/24/outline';
+import { useCompany } from '@/contexts/CompanyContext';
+import { useDepartments } from '@/hooks/useDepartments';
+import LocationPicker from '@/components/LocationPicker';
+import { QrCodeIcon, PlusIcon, TrashIcon, ShareIcon, DocumentArrowDownIcon, CalendarIcon, UserGroupIcon, CheckCircleIcon, ClockIcon, XCircleIcon, ArrowPathIcon, MapPinIcon } from '@heroicons/react/24/outline';
 import QRCode from 'react-qr-code';
+
+// Helper function to get local date in YYYY-MM-DD format (avoids timezone issues with toISOString)
+function getLocalDateString(date: Date = new Date()): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 interface User {
   _id: string;
@@ -20,9 +31,19 @@ interface QRCodeData {
   qrCode: string;
   location?: string;
   department?: string;
+  coordinates?: {
+    lat: number;
+    lng: number;
+  };
+  allowedRadius?: number;
   isActive: boolean;
   createdAt: Date;
   usageCount?: number;
+  rotation?: {
+    enabled: boolean;
+    interval: string;
+    lastRotated?: Date;
+  };
 }
 
 interface AttendanceRecord {
@@ -39,6 +60,9 @@ interface AttendanceRecord {
 }
 
 export default function QRAttendancePage() {
+  const { selectedCompany } = useCompany();
+  const companyId = selectedCompany?._id;
+
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'qr-codes' | 'attendance' | 'reports'>('qr-codes');
   const [qrCodes, setQRCodes] = useState<QRCodeData[]>([]);
@@ -50,20 +74,23 @@ export default function QRAttendancePage() {
     total: 0,
     records: [] as AttendanceRecord[]
   });
-  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedDate, setSelectedDate] = useState(getLocalDateString());
   const [loading, setLoading] = useState(true);
   const [showAddQRModal, setShowAddQRModal] = useState(false);
+
+  // Fetch departments for the selected company
+  const { data: departments = [] } = useDepartments(companyId, { isActive: true });
 
   useEffect(() => {
     fetchCurrentUser();
   }, []);
 
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && companyId) {
       fetchQRCodes();
       fetchAttendanceData();
     }
-  }, [currentUser, selectedDate]);
+  }, [currentUser, selectedDate, companyId]);
 
   const fetchCurrentUser = async () => {
     try {
@@ -78,29 +105,41 @@ export default function QRAttendancePage() {
 
   const fetchQRCodes = async () => {
     try {
-      if (!currentUser?.company) return;
+      if (!companyId) return;
 
-      const company = await feathersClient.service('companies').get(currentUser.company);
+      // Fetch QR codes from the qr-codes service
+      const response = await feathersClient.service('qr-codes').find({
+        query: {
+          company: companyId,
+          $limit: 100,
+          $sort: { createdAt: -1 }
+        }
+      });
 
-      // Get QR codes from company's qrCodeSettings
-      const qrCodesArray: QRCodeData[] = [];
-
-      if (company.qrCodeSettings?.qrCode) {
-        qrCodesArray.push({
-          _id: 'main',
-          name: 'Main QR Code',
-          qrCode: company.qrCodeSettings.qrCode,
-          location: 'Main Office',
-          isActive: company.qrCodeSettings.enabled || false,
-          createdAt: company.qrCodeSettings.qrCodeGeneratedAt || new Date(),
-          usageCount: 0
-        });
-      }
-
-      // TODO: Fetch additional QR codes from a dedicated service
+      const qrCodesArray = response.data || response || [];
       setQRCodes(qrCodesArray);
     } catch (error) {
       console.error('Error fetching QR codes:', error);
+      // Fallback to company's main QR code if service doesn't exist
+      try {
+        const company = await feathersClient.service('companies').get(companyId);
+        const qrCodesArray: QRCodeData[] = [];
+
+        if (company.qrCodeSettings?.qrCode) {
+          qrCodesArray.push({
+            _id: 'main',
+            name: 'Main QR Code',
+            qrCode: company.qrCodeSettings.qrCode,
+            location: 'Main Office',
+            isActive: company.qrCodeSettings.enabled || false,
+            createdAt: company.qrCodeSettings.qrCodeGeneratedAt || new Date(),
+            usageCount: 0
+          });
+        }
+        setQRCodes(qrCodesArray);
+      } catch (e) {
+        console.error('Error fetching company QR:', e);
+      }
     } finally {
       setLoading(false);
     }
@@ -108,87 +147,169 @@ export default function QRAttendancePage() {
 
   const fetchAttendanceData = async () => {
     try {
-      if (!currentUser?.company) return;
+      if (!companyId) return;
 
       const selectedDateObj = new Date(selectedDate);
       selectedDateObj.setHours(0, 0, 0, 0);
       const nextDay = new Date(selectedDateObj);
       nextDay.setDate(nextDay.getDate() + 1);
 
-      // Fetch timesheets for selected date
-      const timesheets = await feathersClient.service('timesheets').find({
-        query: {
-          company: currentUser.company,
-          'dailyEntries.date': {
-            $gte: selectedDateObj.toISOString(),
-            $lt: nextDay.toISOString()
-          },
-          $populate: 'worker',
-          $limit: 100
-        }
-      });
-
-      const records = timesheets.data || timesheets;
-
       // Calculate attendance stats
       let present = 0;
       let late = 0;
       let absent = 0;
-
       const attendanceRecords: AttendanceRecord[] = [];
+      const workerIdsWithRecords = new Set<string>();
 
-      records.forEach((timesheet: any) => {
-        const todayEntry = timesheet.dailyEntries?.find((entry: any) => {
-          const entryDate = new Date(entry.date);
-          return entryDate >= selectedDateObj && entryDate < nextDay;
+      // Fetch attendance records (for monthly workers)
+      try {
+        const attendanceResult = await feathersClient.service('attendance').find({
+          query: {
+            company: companyId,
+            date: {
+              $gte: selectedDateObj.toISOString(),
+              $lt: nextDay.toISOString()
+            },
+            $limit: 100
+          }
         });
 
-        if (todayEntry) {
+        const attendanceList = attendanceResult.data || attendanceResult || [];
+        console.log('Attendance records found:', attendanceList.length);
+
+        // Process attendance records
+        for (const record of attendanceList) {
+          // Fetch worker info if not populated
+          let worker = record.worker;
+          if (typeof worker === 'string') {
+            try {
+              worker = await feathersClient.service('workers').get(worker);
+            } catch (e) {
+              console.log('Could not fetch worker:', worker);
+            }
+          }
+
           let status: 'present' | 'late' | 'absent' | 'not-checked-in' = 'not-checked-in';
 
-          if (todayEntry.isAbsent) {
+          if (record.status === 'absent') {
             status = 'absent';
             absent++;
-          } else if (todayEntry.clockIn) {
+          } else if (record.clockIn) {
             status = 'present';
             present++;
 
             // Check if late (after 9:15 AM)
-            const clockIn = new Date(todayEntry.clockIn);
-            const lateThreshold = new Date(clockIn);
+            const clockIn = new Date(record.clockIn);
+            const lateThreshold = new Date(selectedDateObj);
             lateThreshold.setHours(9, 15, 0, 0);
             if (clockIn > lateThreshold) {
               status = 'late';
               late++;
+              present--; // Correct the count
             }
           }
 
           attendanceRecords.push({
-            _id: timesheet._id,
-            worker: timesheet.worker,
-            date: todayEntry.date,
-            clockIn: todayEntry.clockIn,
-            clockOut: todayEntry.clockOut,
-            lunchOut: todayEntry.lunchOut,
-            lunchIn: todayEntry.lunchIn,
+            _id: record._id,
+            worker: worker,
+            date: record.date,
+            clockIn: record.clockIn,
+            clockOut: record.clockOut,
+            lunchOut: record.lunchOut,
+            lunchIn: record.lunchIn,
             status,
-            checkInMethod: todayEntry.checkInMethod,
-            qrCodeUsed: todayEntry.qrCodeCheckIn?.qrCodeData
+            checkInMethod: record.checkInMethod,
+            qrCodeUsed: record.qrCodeData
           });
+
+          // Track worker IDs to avoid duplicates from timesheets
+          const workerId = typeof record.worker === 'string' ? record.worker : record.worker?._id;
+          if (workerId) workerIdsWithRecords.add(workerId.toString());
         }
-      });
+      } catch (e) {
+        console.log('Error fetching attendance records:', e);
+      }
+
+      // Fetch timesheets for selected date (for hourly workers)
+      try {
+        const timesheets = await feathersClient.service('timesheets').find({
+          query: {
+            company: companyId,
+            'dailyEntries.date': {
+              $gte: selectedDateObj.toISOString(),
+              $lt: nextDay.toISOString()
+            },
+            $populate: 'worker',
+            $limit: 100
+          }
+        });
+
+        const records = timesheets.data || timesheets || [];
+
+        records.forEach((timesheet: any) => {
+          // Skip if we already have an attendance record for this worker
+          const workerId = typeof timesheet.worker === 'string' ? timesheet.worker : timesheet.worker?._id;
+          if (workerId && workerIdsWithRecords.has(workerId.toString())) {
+            return;
+          }
+
+          const todayEntry = timesheet.dailyEntries?.find((entry: any) => {
+            const entryDate = new Date(entry.date);
+            return entryDate >= selectedDateObj && entryDate < nextDay;
+          });
+
+          if (todayEntry) {
+            let status: 'present' | 'late' | 'absent' | 'not-checked-in' = 'not-checked-in';
+
+            if (todayEntry.isAbsent) {
+              status = 'absent';
+              absent++;
+            } else if (todayEntry.clockIn) {
+              status = 'present';
+              present++;
+
+              // Check if late (after 9:15 AM)
+              const clockIn = new Date(todayEntry.clockIn);
+              const lateThreshold = new Date(selectedDateObj);
+              lateThreshold.setHours(9, 15, 0, 0);
+              if (clockIn > lateThreshold) {
+                status = 'late';
+                late++;
+                present--;
+              }
+            }
+
+            attendanceRecords.push({
+              _id: timesheet._id,
+              worker: timesheet.worker,
+              date: todayEntry.date,
+              clockIn: todayEntry.clockIn,
+              clockOut: todayEntry.clockOut,
+              lunchOut: todayEntry.lunchOut,
+              lunchIn: todayEntry.lunchIn,
+              status,
+              checkInMethod: todayEntry.checkInMethod,
+              qrCodeUsed: todayEntry.qrCodeCheckIn?.qrCodeData
+            });
+
+            if (workerId) workerIdsWithRecords.add(workerId.toString());
+          }
+        });
+      } catch (e) {
+        console.log('Error fetching timesheets:', e);
+      }
 
       // Get total workers
       const workers = await feathersClient.service('workers').find({
         query: {
-          company: currentUser.company,
+          company: companyId,
           isActive: true,
           $limit: 0
         }
       });
 
       const total = workers.total || 0;
-      const notCheckedIn = total - present - absent;
+      const notCheckedIn = total - present - late - absent;
 
       setAttendanceData({
         present,
@@ -203,29 +324,72 @@ export default function QRAttendancePage() {
     }
   };
 
-  const handleAddQRCode = async (data: { name: string; location?: string; department?: string }) => {
+  const handleAddQRCode = async (data: {
+    name: string;
+    location?: string;
+    department?: string;
+    coordinates?: { lat: number; lng: number };
+    allowedRadius?: number;
+    rotation?: {
+      enabled: boolean;
+      interval: string;
+    };
+  }) => {
     try {
-      if (!currentUser?.company) return;
+      if (!companyId) {
+        alert('Please select a company first');
+        return;
+      }
 
-      const qrCode = `QR-${currentUser.company.substring(0, 8).toUpperCase()}-${Date.now()}`;
+      const qrCode = `QR-${companyId.substring(0, 8).toUpperCase()}-${Date.now()}`;
 
-      // For now, update the main company QR code
-      // TODO: Create a dedicated QR codes service
-      await feathersClient.service('companies').patch(currentUser.company, {
-        qrCodeSettings: {
-          enabled: true,
-          qrCode,
-          qrCodeGeneratedAt: new Date(),
-          allowManualEdit: false
-        }
+      // Create QR code in the service
+      await feathersClient.service('qr-codes').create({
+        company: companyId,
+        name: data.name,
+        qrCode,
+        location: data.location,
+        department: data.department,
+        coordinates: data.coordinates,
+        allowedRadius: data.allowedRadius || 100,
+        isActive: true,
+        rotation: data.rotation ? {
+          enabled: data.rotation.enabled,
+          interval: data.rotation.interval,
+          lastRotated: new Date(),
+          baseCode: qrCode
+        } : undefined
       });
 
       setShowAddQRModal(false);
       fetchQRCodes();
       alert('QR Code created successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating QR code:', error);
-      alert('Failed to create QR code');
+
+      // Fallback: update company's main QR code
+      if (error.message?.includes('service') || error.code === 404) {
+        try {
+          await feathersClient.service('companies').patch(companyId, {
+            qrCodeSettings: {
+              enabled: true,
+              qrCode: `QR-${companyId.substring(0, 8).toUpperCase()}-${Date.now()}`,
+              qrCodeGeneratedAt: new Date(),
+              allowManualEdit: false,
+              coordinates: data.coordinates,
+              allowedRadius: data.allowedRadius || 100
+            }
+          });
+          setShowAddQRModal(false);
+          fetchQRCodes();
+          alert('QR Code created successfully!');
+        } catch (e) {
+          console.error('Fallback error:', e);
+          alert('Failed to create QR code');
+        }
+      } else {
+        alert(error.message || 'Failed to create QR code');
+      }
     }
   };
 
@@ -233,8 +397,9 @@ export default function QRAttendancePage() {
     if (!confirm('Are you sure you want to delete this QR code?')) return;
 
     try {
-      // TODO: Implement delete functionality
-      alert('Delete functionality coming soon');
+      await feathersClient.service('qr-codes').remove(qrCodeId);
+      fetchQRCodes();
+      alert('QR Code deleted successfully!');
     } catch (error) {
       console.error('Error deleting QR code:', error);
       alert('Failed to delete QR code');
@@ -333,7 +498,7 @@ export default function QRAttendancePage() {
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `attendance-${type}-${new Date().toISOString().split('T')[0]}.csv`;
+        a.download = `attendance-${type}-${getLocalDateString()}.csv`;
         a.click();
         window.URL.revokeObjectURL(url);
       } else {
@@ -354,6 +519,17 @@ export default function QRAttendancePage() {
     );
   }
 
+  if (!companyId) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="text-center">
+          <QrCodeIcon className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+          <p className="text-gray-600">Please select a company first</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -362,7 +538,7 @@ export default function QRAttendancePage() {
           <QrCodeIcon className="h-8 w-8 text-indigo-600" />
           QR Code & Attendance Management
         </h1>
-        <p className="text-gray-600 mt-2">Manage QR codes and track worker attendance</p>
+        <p className="text-gray-600 mt-2">Manage QR codes and track worker attendance for {selectedCompany?.name}</p>
       </div>
 
       {/* Tabs */}
@@ -435,7 +611,13 @@ export default function QRAttendancePage() {
                   <div>
                     <h3 className="text-lg font-semibold text-gray-900">{qr.name}</h3>
                     {qr.location && (
-                      <p className="text-sm text-gray-500">{qr.location}</p>
+                      <p className="text-sm text-gray-500 flex items-center gap-1">
+                        <MapPinIcon className="h-4 w-4" />
+                        {qr.location}
+                      </p>
+                    )}
+                    {qr.department && (
+                      <p className="text-xs text-indigo-600 mt-1">Dept: {qr.department}</p>
                     )}
                   </div>
                   <span className={`px-2 py-1 rounded-full text-xs font-semibold ${
@@ -454,6 +636,36 @@ export default function QRAttendancePage() {
                     level="H"
                   />
                 </div>
+
+                {/* Location Info */}
+                {qr.coordinates && (
+                  <div className="bg-indigo-50 rounded-lg p-2 mb-2">
+                    <p className="text-xs text-indigo-700">
+                      📍 Geo-fenced: {qr.allowedRadius || 100}m radius
+                    </p>
+                  </div>
+                )}
+
+                {/* Rotation Info */}
+                {qr.rotation?.enabled && (
+                  <div className="bg-amber-50 rounded-lg p-2 mb-4">
+                    <p className="text-xs text-amber-700">
+                      🔄 Auto-rotating: {
+                        qr.rotation.interval === '5min' ? 'Every 5 mins' :
+                        qr.rotation.interval === '15min' ? 'Every 15 mins' :
+                        qr.rotation.interval === '1hour' ? 'Every hour' :
+                        qr.rotation.interval === '3hours' ? 'Every 3 hours' :
+                        qr.rotation.interval === '12hours' ? 'Every 12 hours' :
+                        qr.rotation.interval === '24hours' ? 'Every 24 hours' : qr.rotation.interval
+                      }
+                    </p>
+                    {qr.rotation.lastRotated && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        Last rotated: {new Date(qr.rotation.lastRotated).toLocaleString()}
+                      </p>
+                    )}
+                  </div>
+                )}
 
                 <div className="space-y-2 mb-4">
                   <p className="text-xs text-gray-500">QR Code:</p>
@@ -516,6 +728,19 @@ export default function QRAttendancePage() {
                 onChange={(e) => setSelectedDate(e.target.value)}
                 className="border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
               />
+              <button
+                onClick={() => setSelectedDate(getLocalDateString())}
+                className={`px-3 py-2 rounded-lg font-medium text-sm transition-colors ${
+                  selectedDate === getLocalDateString()
+                    ? 'bg-indigo-100 text-indigo-700 border border-indigo-300'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                Today
+              </button>
+              {selectedDate === getLocalDateString() && (
+                <span className="text-sm text-green-600 font-medium">● Viewing Today</span>
+              )}
             </div>
             <button
               onClick={fetchAttendanceData}
@@ -701,7 +926,7 @@ export default function QRAttendancePage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold text-gray-900 mb-2">Daily Report</h3>
-                <p className="text-sm text-gray-600 mb-4">Download today's attendance report</p>
+                <p className="text-sm text-gray-600 mb-4">Download today&apos;s attendance report</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => downloadReport('daily', 'csv')}
@@ -722,7 +947,7 @@ export default function QRAttendancePage() {
 
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold text-gray-900 mb-2">Weekly Report</h3>
-                <p className="text-sm text-gray-600 mb-4">Download this week's attendance report</p>
+                <p className="text-sm text-gray-600 mb-4">Download this week&apos;s attendance report</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => downloadReport('weekly', 'csv')}
@@ -743,7 +968,7 @@ export default function QRAttendancePage() {
 
               <div className="border rounded-lg p-4">
                 <h3 className="font-semibold text-gray-900 mb-2">Monthly Report</h3>
-                <p className="text-sm text-gray-600 mb-4">Download this month's attendance report</p>
+                <p className="text-sm text-gray-600 mb-4">Download this month&apos;s attendance report</p>
                 <div className="flex gap-2">
                   <button
                     onClick={() => downloadReport('monthly', 'csv')}
@@ -792,6 +1017,7 @@ export default function QRAttendancePage() {
         <AddQRCodeModal
           onClose={() => setShowAddQRModal(false)}
           onSave={handleAddQRCode}
+          departments={departments}
         />
       )}
     </div>
@@ -799,25 +1025,68 @@ export default function QRAttendancePage() {
 }
 
 // Add QR Code Modal Component
-function AddQRCodeModal({ onClose, onSave }: {
+function AddQRCodeModal({ onClose, onSave, departments }: {
   onClose: () => void;
-  onSave: (data: { name: string; location?: string; department?: string }) => void;
+  onSave: (data: {
+    name: string;
+    location?: string;
+    department?: string;
+    coordinates?: { lat: number; lng: number };
+    allowedRadius?: number;
+    rotation?: {
+      enabled: boolean;
+      interval: string;
+    };
+  }) => void;
+  departments: any[];
 }) {
   const [formData, setFormData] = useState({
     name: '',
     location: '',
-    department: ''
+    department: '',
+    coordinates: undefined as { lat: number; lng: number; address?: string } | undefined,
+    allowedRadius: 100,
+    rotationEnabled: false,
+    rotationInterval: '1hour'
   });
+
+  const rotationIntervals = [
+    { value: '5min', label: 'Every 5 minutes' },
+    { value: '15min', label: 'Every 15 minutes' },
+    { value: '1hour', label: 'Every 1 hour' },
+    { value: '3hours', label: 'Every 3 hours' },
+    { value: '12hours', label: 'Every 12 hours' },
+    { value: '24hours', label: 'Every 24 hours' }
+  ];
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+
+    if (!formData.name) {
+      alert('QR Code name is required');
+      return;
+    }
+
+    onSave({
+      name: formData.name,
+      location: formData.coordinates?.address || formData.location,
+      department: formData.department,
+      coordinates: formData.coordinates ? {
+        lat: formData.coordinates.lat,
+        lng: formData.coordinates.lng
+      } : undefined,
+      allowedRadius: formData.allowedRadius,
+      rotation: formData.rotationEnabled ? {
+        enabled: true,
+        interval: formData.rotationInterval
+      } : undefined
+    });
   };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-        <div className="bg-indigo-600 px-6 py-4 flex items-center justify-between rounded-t-lg">
+      <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+        <div className="bg-indigo-600 px-6 py-4 flex items-center justify-between rounded-t-lg sticky top-0">
           <h2 className="text-xl font-bold text-white">Add New QR Code</h2>
           <button
             onClick={onClose}
@@ -827,7 +1096,7 @@ function AddQRCodeModal({ onClose, onSave }: {
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               QR Code Name *
@@ -844,27 +1113,87 @@ function AddQRCodeModal({ onClose, onSave }: {
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Location
-            </label>
-            <input
-              type="text"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="e.g., Building A"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
               Department
             </label>
-            <input
-              type="text"
+            <select
               value={formData.department}
               onChange={(e) => setFormData({ ...formData, department: e.target.value })}
               className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
-              placeholder="e.g., Construction"
+            >
+              <option value="">Select Department</option>
+              {departments.map((dept: any) => (
+                <option key={dept._id} value={dept.name}>
+                  {dept.name} {dept.code ? `(${dept.code})` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* QR Code Rotation Settings */}
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <label className="block text-sm font-medium text-amber-900">
+                  🔄 Auto-Rotate QR Code
+                </label>
+                <p className="text-xs text-amber-700 mt-1">
+                  Automatically change the QR code at set intervals for enhanced security
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, rotationEnabled: !formData.rotationEnabled })}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  formData.rotationEnabled ? 'bg-amber-600' : 'bg-gray-300'
+                }`}
+              >
+                <span
+                  className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    formData.rotationEnabled ? 'translate-x-6' : 'translate-x-1'
+                  }`}
+                />
+              </button>
+            </div>
+
+            {formData.rotationEnabled && (
+              <div className="mt-3">
+                <label className="block text-sm font-medium text-amber-900 mb-2">
+                  Rotation Interval
+                </label>
+                <select
+                  value={formData.rotationInterval}
+                  onChange={(e) => setFormData({ ...formData, rotationInterval: e.target.value })}
+                  className="w-full border border-amber-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-white"
+                >
+                  {rotationIntervals.map((interval) => (
+                    <option key={interval.value} value={interval.value}>
+                      {interval.label}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-amber-600 mt-2">
+                  ⚠️ Workers must scan the latest QR code. Old codes will be rejected.
+                </p>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Pin Location on Map
+            </label>
+            <p className="text-sm text-gray-500 mb-3">
+              Set the check-in location. Workers must be within the specified radius to check in.
+            </p>
+            <LocationPicker
+              value={formData.coordinates}
+              onChange={(location) => setFormData({
+                ...formData,
+                coordinates: location,
+                location: location.address
+              })}
+              radius={formData.allowedRadius}
+              onRadiusChange={(radius) => setFormData({ ...formData, allowedRadius: radius })}
             />
           </div>
 

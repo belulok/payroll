@@ -184,13 +184,22 @@ const timesheetSchema = new mongoose.Schema({
   // Approval workflow
   status: {
     type: String,
-    enum: ['draft', 'submitted', 'approved', 'rejected', 'cancelled'],
+    enum: ['draft', 'submitted', 'verified', 'approved', 'rejected', 'cancelled'],
     default: 'draft',
     required: true,
     index: true
   },
 
-  // Approval tracking
+  // Verification tracking
+  verifiedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'users'
+  },
+  verifiedAt: {
+    type: Date
+  },
+
+  // Approval tracking (legacy/alias)
   approvedBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'users'

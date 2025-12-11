@@ -5,7 +5,8 @@ const hooks = require('./loans.hooks');
 module.exports = function (app) {
   const options = {
     Model: createModel,
-    paginate: app.get('paginate')
+    paginate: app.get('paginate'),
+    whitelist: ['$populate', '$regex', '$options']
   };
 
   app.use('/loans', new Loans(options, app));

@@ -50,35 +50,43 @@ interface WeeklyTimesheet {
   status: string;
 }
 
-export function useTimesheets(companyId: string | undefined, weekStart: Date) {
+export function useTimesheets(companyId?: string, weekStart?: Date) {
   return useQuery({
-    queryKey: ['timesheets', companyId, weekStart.toISOString()],
+    queryKey: ['timesheets', companyId, weekStart?.toISOString()],
     queryFn: async () => {
-      if (!companyId) return [];
+      const query: any = {
+        $limit: 500,
+        $sort: { weekStartDate: 1 },
+        isDeleted: false
+      };
 
-      const weekEnd = new Date(weekStart);
-      weekEnd.setDate(weekEnd.getDate() + 6); // Include Saturday for hourly workers
+      if (companyId) {
+        query.company = companyId;
+      }
 
-      const response = await feathersClient.service('timesheets').find({
-        query: {
-          company: companyId,
-          $limit: 500,
-          weekStartDate: {
-            $gte: weekStart.toISOString(),
-            $lte: weekEnd.toISOString()
-          },
-          $sort: { weekStartDate: 1 },
-          isDeleted: false
-        }
-      });
+      if (weekStart) {
+        // Adjust for timezone differences - expand the search window
+        const searchStart = new Date(weekStart);
+        searchStart.setDate(searchStart.getDate() - 1); // Day before to catch timezone offsets
+        searchStart.setHours(0, 0, 0, 0);
 
+        const searchEnd = new Date(weekStart);
+        searchEnd.setDate(searchEnd.getDate() + 7); // Day after to catch timezone offsets
+        searchEnd.setHours(23, 59, 59, 999);
+
+        query.weekStartDate = {
+          $gte: searchStart.toISOString(),
+          $lte: searchEnd.toISOString()
+        };
+      }
+
+      const response = await feathersClient.service('timesheets').find({ query });
       return (response.data || response) as WeeklyTimesheet[];
     },
-    enabled: !!companyId,
   });
 }
 
-export function useUpdateTimesheet(companyId: string | undefined, weekStart: Date) {
+export function useUpdateTimesheet() {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -86,10 +94,7 @@ export function useUpdateTimesheet(companyId: string | undefined, weekStart: Dat
       return await feathersClient.service('timesheets').patch(id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({
-        queryKey: ['timesheets', companyId, weekStart.toISOString()]
-      });
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
     },
   });
 }
-

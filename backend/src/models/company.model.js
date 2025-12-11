@@ -43,8 +43,8 @@ const companySchema = new mongoose.Schema({
     },
     status: {
       type: String,
-      enum: ['active', 'inactive', 'suspended', 'cancelled'],
-      default: 'active'
+      enum: ['trial', 'active', 'inactive', 'suspended', 'cancelled'],
+      default: 'trial'
     },
     startDate: {
       type: Date,
@@ -117,6 +117,19 @@ const companySchema = new mongoose.Schema({
     type: Boolean,
     default: true
   },
+
+  // Approval Status (for companies created by agents)
+  approvalStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: 'approved' // Default to approved for admin-created companies
+  },
+  approvedBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'users'
+  },
+  approvedAt: Date,
+  rejectionReason: String,
 
   // Metadata
   notes: String,

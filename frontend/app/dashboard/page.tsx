@@ -87,7 +87,7 @@ export default function Dashboard() {
         query: { $limit: 1000 }
       })
       const companies = Array.isArray(companiesResponse) ? companiesResponse : companiesResponse.data || []
-      const active = companies.filter((c: any) => c.subscription?.status === 'active')
+      const active = companies.filter((c: any) => c.subscription?.status === 'active' || c.subscription?.status === 'trial')
 
       setStats({
         totalWorkers: workers.length,
@@ -95,8 +95,12 @@ export default function Dashboard() {
         monthlyPayroll: totalPayroll,
         activeCompanies: active.length
       })
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching stats:', error)
+      // If authentication error, redirect to login
+      if (error.code === 401 || error.className === 'not-authenticated') {
+        router.push('/login')
+      }
     }
   }
 

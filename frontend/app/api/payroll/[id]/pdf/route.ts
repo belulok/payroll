@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3030';
+
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -30,7 +32,7 @@ export async function GET(
 
     // Fetch payroll data from backend with JWT token
     // Add $populate to get worker details
-    const backendUrl = new URL(`http://localhost:3030/payroll-records/${payrollId}`);
+    const backendUrl = new URL(`${API_URL}/payroll-records/${payrollId}`);
     backendUrl.searchParams.set('$populate', 'worker');
 
     console.log('Fetching payroll from:', backendUrl.toString());

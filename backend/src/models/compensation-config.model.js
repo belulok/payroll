@@ -23,7 +23,38 @@ const benefitConfigSchema = new mongoose.Schema({
   },
   jobBandName: String, // Denormalized for quick access
 
-  // Leave Entitlements
+  // Dynamic Leave Entitlements
+  leaveEntitlements: [{
+    name: {
+      type: String,
+      required: true
+    },
+    code: {
+      type: String,
+      uppercase: true,
+      maxLength: 4
+    },
+    daysPerYear: {
+      type: Number,
+      default: 0,
+      min: 0
+    },
+    isPaid: {
+      type: Boolean,
+      default: true
+    },
+    requiresApproval: {
+      type: Boolean,
+      default: true
+    },
+    requiresDocument: {
+      type: Boolean,
+      default: false
+    },
+    description: String
+  }],
+
+  // Legacy Leave Entitlements (for backward compatibility)
   annualLeave: {
     type: Number,
     default: 0,

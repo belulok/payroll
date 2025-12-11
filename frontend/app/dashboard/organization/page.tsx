@@ -69,12 +69,12 @@ export default function OrganizationPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
   // Fetch ALL data (no filtering on backend - we'll filter on frontend for accurate counts)
-  const { data: allDepartments = [], isLoading: departmentsLoading } = useDepartments({});
-  const { data: allPositions = [], isLoading: positionsLoading } = usePositions({});
-  const { data: allJobBands = [], isLoading: jobBandsLoading } = useJobBands({});
-  const { data: allJobGrades = [], isLoading: jobGradesLoading } = useJobGrades({});
-  const { data: allGroups = [], isLoading: groupsLoading } = useWorkerGroups({});
-  const { data: allTasks = [], isLoading: tasksLoading } = useTasks({});
+  const { data: allDepartments = [], isLoading: departmentsLoading } = useDepartments(selectedCompany?._id);
+  const { data: allPositions = [], isLoading: positionsLoading } = usePositions(selectedCompany?._id);
+  const { data: allJobBands = [], isLoading: jobBandsLoading } = useJobBands(selectedCompany?._id);
+  const { data: allJobGrades = [], isLoading: jobGradesLoading } = useJobGrades(selectedCompany?._id);
+  const { data: allGroups = [], isLoading: groupsLoading } = useWorkerGroups(selectedCompany?._id);
+  const { data: allTasks = [], isLoading: tasksLoading } = useTasks(selectedCompany?._id);
 
   // Filter data on frontend based on filter state
   const departments = departmentFilter === 'all'
@@ -147,7 +147,7 @@ export default function OrganizationPage() {
     if (selectedDepartment) {
       await updateDepartment.mutateAsync({ id: selectedDepartment._id, data });
     } else {
-      await createDepartment.mutateAsync({ ...data, company: selectedCompany });
+      await createDepartment.mutateAsync({ ...data, company: selectedCompany!._id });
     }
     setShowDepartmentModal(false);
   };
@@ -173,7 +173,7 @@ export default function OrganizationPage() {
     if (selectedPosition) {
       await updatePosition.mutateAsync({ id: selectedPosition._id, data });
     } else {
-      await createPosition.mutateAsync({ ...data, company: selectedCompany });
+      await createPosition.mutateAsync({ ...data, company: selectedCompany!._id });
     }
     setShowPositionModal(false);
   };
@@ -199,7 +199,7 @@ export default function OrganizationPage() {
     if (selectedJobBand) {
       await updateJobBand.mutateAsync({ id: selectedJobBand._id, data });
     } else {
-      await createJobBand.mutateAsync({ ...data, company: selectedCompany });
+      await createJobBand.mutateAsync({ ...data, company: selectedCompany!._id });
     }
     setShowJobBandModal(false);
   };
@@ -225,7 +225,7 @@ export default function OrganizationPage() {
     if (selectedJobGrade) {
       await updateJobGrade.mutateAsync({ id: selectedJobGrade._id, data });
     } else {
-      await createJobGrade.mutateAsync({ ...data, company: selectedCompany });
+      await createJobGrade.mutateAsync({ ...data, company: selectedCompany!._id });
     }
     setShowJobGradeModal(false);
   };
@@ -251,7 +251,7 @@ export default function OrganizationPage() {
     if (selectedGroup) {
       await updateGroup.mutateAsync({ id: selectedGroup._id, data });
     } else {
-      await createGroup.mutateAsync({ ...data, company: selectedCompany });
+      await createGroup.mutateAsync({ ...data, company: selectedCompany!._id });
     }
     setShowGroupModal(false);
   };
@@ -277,7 +277,7 @@ export default function OrganizationPage() {
     if (selectedTask) {
       await updateTask.mutateAsync({ id: selectedTask._id, data });
     } else {
-      await createTask.mutateAsync({ ...data, company: selectedCompany });
+      await createTask.mutateAsync({ ...data, company: selectedCompany!._id });
     }
     setShowTaskModal(false);
   };

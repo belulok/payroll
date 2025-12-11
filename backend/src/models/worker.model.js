@@ -41,6 +41,27 @@ const workerSchema = new mongoose.Schema({
     type: String,
     trim: true
   },
+  dateOfBirth: {
+    type: Date
+  },
+  gender: {
+    type: String,
+    enum: ['male', 'female', 'other'],
+  },
+  nationality: {
+    type: String,
+    default: 'Malaysian'
+  },
+
+  // Profile Picture
+  profilePicture: {
+    type: String,
+    trim: true
+  },
+  profilePictureFileName: {
+    type: String,
+    trim: true
+  },
 
   // Passport Information
   passportNumber: {

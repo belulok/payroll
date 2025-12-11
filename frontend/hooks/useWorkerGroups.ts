@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
-import { useCompany } from '@/contexts/CompanyContext';
 
 export interface WorkerGroup {
   _id: string;
@@ -14,17 +13,18 @@ export interface WorkerGroup {
   updatedAt?: string;
 }
 
-export function useWorkerGroups(filters?: { isActive?: boolean }) {
-  const { selectedCompany } = useCompany();
-
+export function useWorkerGroups(companyId?: string, filters?: { isActive?: boolean }) {
   return useQuery({
-    queryKey: ['worker-groups', selectedCompany, filters],
+    queryKey: ['worker-groups', companyId, filters],
     queryFn: async () => {
       const query: any = {
-        company: selectedCompany,
         $limit: 1000,
         $sort: { name: 1 }
       };
+
+      if (companyId) {
+        query.company = companyId;
+      }
 
       if (filters?.isActive !== undefined) {
         query.isActive = filters.isActive;
@@ -33,9 +33,8 @@ export function useWorkerGroups(filters?: { isActive?: boolean }) {
       const response = await feathersClient.service('worker-groups').find({ query });
       return response.data || response;
     },
-    enabled: !!selectedCompany,
-    staleTime: 0, // Always consider data stale
-    refetchOnMount: true, // Refetch when component mounts
+    staleTime: 0,
+    refetchOnMount: true,
   });
 }
 
@@ -43,7 +42,8 @@ export function useCreateWorkerGroup() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<WorkerGroup>) => {
+    mutationFn: async (data: Partial<WorkerGroup> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
       return await feathersClient.service('worker-groups').create(data);
     },
     onSuccess: () => {
@@ -77,4 +77,3 @@ export function useDeleteWorkerGroup() {
     },
   });
 }
-

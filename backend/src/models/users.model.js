@@ -21,17 +21,23 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'subcon-admin', 'worker', 'agent', 'user'],
-    default: 'user',
+    enum: ['admin', 'agent', 'subcon-admin', 'subcon-clerk', 'worker'],
+    default: 'worker',
     required: true
   },
 
-  // Company Reference (for subcon-admin and worker roles)
+  // Single Company Reference (for subcon-admin, subcon-clerk, and worker roles)
   company: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'companies',
     index: true
   },
+
+  // Multiple Companies (for agent role only)
+  companies: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'companies'
+  }],
 
   // Worker Reference (for worker role)
   worker: {
@@ -77,6 +83,14 @@ userSchema.methods.isWorker = function() {
 
 userSchema.methods.isSystemAdmin = function() {
   return this.role === 'admin';
+};
+
+userSchema.methods.isAgent = function() {
+  return this.role === 'agent';
+};
+
+userSchema.methods.isSubconClerk = function() {
+  return this.role === 'subcon-clerk';
 };
 
 module.exports = function (app) {

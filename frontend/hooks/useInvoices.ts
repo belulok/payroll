@@ -38,7 +38,7 @@ export interface Invoice {
   projectId: string;
   projectName: string;
   companyId: string;
-	  periodType: 'daily' | 'weekly' | 'monthly' | 'custom';
+  periodType: 'daily' | 'weekly' | 'monthly' | 'custom';
   startDate: string;
   endDate: string;
   invoiceDate: string;
@@ -70,30 +70,29 @@ export interface GenerateInvoiceData {
   projectId: string;
   startDate: string;
   endDate: string;
-	  periodType: 'daily' | 'weekly' | 'monthly' | 'custom';
+  periodType: 'daily' | 'weekly' | 'monthly' | 'custom';
   taxRate?: number;
+  companyId?: string;
 }
 
 export const useInvoices = (companyId?: string, params?: any) => {
   return useQuery({
     queryKey: ['invoices', companyId, params],
     queryFn: async () => {
-      if (!companyId) return { data: [] };
+      const query: any = {
+        $limit: params?.limit || 50,
+        $skip: params?.skip || 0,
+        $sort: { createdAt: -1 },
+        ...params?.query
+      };
 
-      const response = await feathersClient.service('invoices').find({
-        query: {
-	          // Invoices store the tenant reference in `companyId` (not `company`),
-	          // so we must filter using `companyId` to actually get results.
-	          companyId: companyId,
-          $limit: params?.limit || 50,
-          $skip: params?.skip || 0,
-          $sort: { createdAt: -1 },
-          ...params?.query
-        }
-      });
+      if (companyId) {
+        query.companyId = companyId;
+      }
+
+      const response = await feathersClient.service('invoices').find({ query });
       return response;
     },
-    enabled: !!companyId
   });
 };
 
@@ -111,7 +110,8 @@ export const useCreateInvoice = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<Invoice>) => {
+    mutationFn: async (data: Partial<Invoice> & { companyId: string }) => {
+      if (!data.companyId) throw new Error('Company ID is required');
       return await feathersClient.service('invoices').create(data);
     },
     onSuccess: () => {
@@ -124,7 +124,8 @@ export const useGenerateInvoice = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: GenerateInvoiceData) => {
+    mutationFn: async (data: GenerateInvoiceData & { companyId: string }) => {
+      if (!data.companyId) throw new Error('Company ID is required');
       return await feathersClient.service('invoices/generate').create(data);
     },
     onSuccess: () => {

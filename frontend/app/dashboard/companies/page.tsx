@@ -54,11 +54,13 @@ const statusConfig = {
 };
 
 // Company Form Modal Component
-function CompanyFormModal({ company, onClose, onSave }: {
+function CompanyFormModal({ company, onClose, onSave, userRole }: {
   company: Company | null;
   onClose: () => void;
   onSave: (data: Partial<Company>) => void;
+  userRole?: string;
 }) {
+  const isAdmin = userRole === 'admin';
   const [formData, setFormData] = useState({
     name: company?.name || '',
     registrationNumber: company?.registrationNumber || '',
@@ -200,58 +202,62 @@ function CompanyFormModal({ company, onClose, onSave }: {
             </div>
           </div>
 
-          {/* Subscription */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
-                <select
-                  value={formData.subscription.plan}
-                  onChange={(e) => handlePlanChange(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="trial">Trial (RM 0)</option>
-                  <option value="basic">Basic (RM 99)</option>
-                  <option value="standard">Standard (RM 249)</option>
-                  <option value="premium">Premium (RM 499)</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
-                <select
-                  value={formData.subscription.status}
-                  onChange={(e) => setFormData({ ...formData, subscription: { ...formData.subscription, status: e.target.value } })}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                >
-                  <option value="trial">Trial</option>
-                  <option value="active">Active</option>
-                  <option value="suspended">Suspended</option>
-                  <option value="cancelled">Cancelled</option>
-                </select>
+          {/* Subscription - Admin only */}
+          {isAdmin && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Subscription</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Plan</label>
+                  <select
+                    value={formData.subscription.plan}
+                    onChange={(e) => handlePlanChange(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  >
+                    <option value="trial">Trial (RM 0)</option>
+                    <option value="basic">Basic (RM 99)</option>
+                    <option value="standard">Standard (RM 249)</option>
+                    <option value="premium">Premium (RM 499)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                  <select
+                    value={formData.subscription.status}
+                    onChange={(e) => setFormData({ ...formData, subscription: { ...formData.subscription, status: e.target.value } })}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  >
+                    <option value="trial">Trial</option>
+                    <option value="active">Active</option>
+                    <option value="suspended">Suspended</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Payment Types */}
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Types</h3>
-            <div className="flex flex-wrap gap-3">
-              {['monthly-salary', 'hourly', 'unit-based'].map((type) => (
-                <label key={type} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={formData.paymentTypes.includes(type)}
-                    onChange={() => togglePaymentType(type)}
-                    className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
-                  />
-                  <span className="text-sm text-gray-700">
-                    {type === 'monthly-salary' ? 'Monthly Salary' : type === 'hourly' ? 'Hourly' : 'Unit-Based'}
-                  </span>
-                </label>
-              ))}
+          {/* Payment Types - Admin only */}
+          {isAdmin && (
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-4">Payment Types</h3>
+              <div className="flex flex-wrap gap-3">
+                {['monthly-salary', 'hourly', 'unit-based'].map((type) => (
+                  <label key={type} className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={formData.paymentTypes.includes(type)}
+                      onChange={() => togglePaymentType(type)}
+                      className="w-4 h-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500"
+                    />
+                    <span className="text-sm text-gray-700">
+                      {type === 'monthly-salary' ? 'Monthly Salary' : type === 'hourly' ? 'Hourly' : 'Unit-Based'}
+                    </span>
+                  </label>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Actions */}
           <div className="flex justify-end gap-3 pt-4 border-t">
@@ -422,7 +428,8 @@ export default function CompaniesPage() {
   };
 
   const canAddCompany = () => {
-    return currentUser?.role === 'admin';
+    // Admin and Agent can add companies
+    return currentUser?.role === 'admin' || currentUser?.role === 'agent';
   };
 
   const canEditCompany = (company: Company) => {
@@ -528,7 +535,7 @@ export default function CompaniesPage() {
         <div className="bg-purple-50 rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-purple-600">Monthly Revenue</p>
+              <p className="text-sm text-purple-600">Monthly Subscription Fee</p>
               <p className="text-2xl font-bold text-purple-900">RM {totalRevenue.toLocaleString()}</p>
             </div>
             <BuildingOfficeIcon className="h-10 w-10 text-purple-400" />
@@ -659,6 +666,7 @@ export default function CompaniesPage() {
             setSelectedCompany(null);
           }}
           onSave={handleSaveCompany}
+          userRole={currentUser?.role}
         />
       )}
 

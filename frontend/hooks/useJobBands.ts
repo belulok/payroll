@@ -1,6 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import feathersClient from '@/lib/feathers';
-import { useCompany } from '@/contexts/CompanyContext';
 
 export interface JobBand {
   _id: string;
@@ -15,17 +14,18 @@ export interface JobBand {
   updatedAt?: string;
 }
 
-export function useJobBands(filters?: { isActive?: boolean }) {
-  const { selectedCompany } = useCompany();
-
+export function useJobBands(companyId?: string, filters?: { isActive?: boolean }) {
   return useQuery({
-    queryKey: ['job-bands', selectedCompany, filters],
+    queryKey: ['job-bands', companyId, filters],
     queryFn: async () => {
       const query: any = {
-        company: selectedCompany,
         $limit: 1000,
         $sort: { level: 1, name: 1 }
       };
+
+      if (companyId) {
+        query.company = companyId;
+      }
 
       if (filters?.isActive !== undefined) {
         query.isActive = filters.isActive;
@@ -34,9 +34,8 @@ export function useJobBands(filters?: { isActive?: boolean }) {
       const response = await feathersClient.service('job-bands').find({ query });
       return response.data || response;
     },
-    enabled: !!selectedCompany,
-    staleTime: 0, // Always consider data stale
-    refetchOnMount: true, // Refetch when component mounts
+    staleTime: 0,
+    refetchOnMount: true,
   });
 }
 
@@ -44,7 +43,8 @@ export function useCreateJobBand() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (data: Partial<JobBand>) => {
+    mutationFn: async (data: Partial<JobBand> & { company: string }) => {
+      if (!data.company) throw new Error('Company ID is required');
       return await feathersClient.service('job-bands').create(data);
     },
     onSuccess: () => {
@@ -78,4 +78,3 @@ export function useDeleteJobBand() {
     },
   });
 }
-

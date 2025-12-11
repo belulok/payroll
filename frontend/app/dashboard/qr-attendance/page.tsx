@@ -122,6 +122,7 @@ export default function QRAttendancePage() {
       console.error('Error fetching QR codes:', error);
       // Fallback to company's main QR code if service doesn't exist
       try {
+        if (!companyId) return;
         const company = await feathersClient.service('companies').get(companyId);
         const qrCodesArray: QRCodeData[] = [];
 
@@ -370,6 +371,7 @@ export default function QRAttendancePage() {
       // Fallback: update company's main QR code
       if (error.message?.includes('service') || error.code === 404) {
         try {
+          if (!companyId) return;
           await feathersClient.service('companies').patch(companyId, {
             qrCodeSettings: {
               enabled: true,

@@ -60,7 +60,7 @@ interface DailyEntry {
 
 interface WeeklyTimesheet {
   _id: string;
-  company: {
+  company?: {
     _id: string;
     name: string;
   };
@@ -179,7 +179,7 @@ export default function TimesheetsPage() {
   const [user, setUser] = useState<any>(null);
 
   // Use TanStack Query hooks
-  const { data: weeklyTimesheets = [], isLoading: loading } = useTimesheets(
+  const { data: weeklyTimesheets = [], isLoading: loading, refetch: refetchTimesheets } = useTimesheets(
     selectedCompany?._id,
     currentWeekStart
   );
@@ -792,7 +792,7 @@ export default function TimesheetsPage() {
 
   // Calculate total hours across all timesheets
   const totalHours = weeklyTimesheets.reduce((sum, t) => {
-    const calc = calculateTimesheetHours(t);
+    const calc = calculateTimesheetHours(t as any);
     return sum + calc.totalHrs;
   }, 0);
 
@@ -853,7 +853,7 @@ export default function TimesheetsPage() {
       console.log('Update data:', updateData);
 
       // Update the timesheet via FeathersJS client
-      const updatedTimesheet = await feathersClient.service('timesheets').patch(editingTimesheet._id, updateData);
+      const updatedTimesheet = await feathersClient.service('timesheets').patch(editingTimesheet._id, updateData) as unknown as WeeklyTimesheet;
 
       console.log('Updated timesheet:', updatedTimesheet);
 
@@ -927,7 +927,7 @@ export default function TimesheetsPage() {
       if (response.ok) {
         alert('✅ Timesheet verified successfully!');
         // Refresh the data
-        fetchWeeklyTimesheets();
+        refetchTimesheets();
         setShowModal(false);
       } else {
         const error = await response.text();
@@ -957,7 +957,7 @@ export default function TimesheetsPage() {
       if (response.ok) {
         alert('❌ Timesheet rejected successfully!');
         // Refresh the data
-        fetchWeeklyTimesheets();
+        refetchTimesheets();
         setShowModal(false);
       } else {
         const error = await response.text();
@@ -1100,7 +1100,7 @@ export default function TimesheetsPage() {
             {weeklyTimesheets.map((weeklyTimesheet) => {
               const totalDays = weeklyTimesheet.dailyEntries.filter(d => !d.isAbsent).length;
               // Calculate hours on the fly for display
-              const calcHours = calculateTimesheetHours(weeklyTimesheet);
+              const calcHours = calculateTimesheetHours(weeklyTimesheet as any);
 
               return (
                 <tr key={weeklyTimesheet._id} className="hover:bg-gray-50">
@@ -1242,13 +1242,16 @@ export default function TimesheetsPage() {
                           value={editingTimesheet?.worker?.lineManager?._id || ''}
                           onChange={(e) => {
                             const supervisor = supervisors.find(s => s._id === e.target.value);
-                            setEditingTimesheet(prev => ({
-                              ...prev,
-                              worker: {
-                                ...prev.worker,
-                                lineManager: supervisor || null
-                              }
-                            }));
+                            setEditingTimesheet((prev: WeeklyTimesheet | null) => {
+                              if (!prev) return prev;
+                              return {
+                                ...prev,
+                                worker: {
+                                  ...prev.worker,
+                                  lineManager: supervisor || undefined
+                                }
+                              };
+                            });
                           }}
                           className="text-sm border border-gray-300 rounded px-2 py-1 flex-1"
                         >
@@ -1276,13 +1279,16 @@ export default function TimesheetsPage() {
                           type="text"
                           value={editingTimesheet?.worker?.department || ''}
                           onChange={(e) => {
-                            setEditingTimesheet(prev => ({
-                              ...prev,
-                              worker: {
-                                ...prev.worker,
-                                department: e.target.value
-                              }
-                            }));
+                            setEditingTimesheet((prev: WeeklyTimesheet | null) => {
+                              if (!prev) return prev;
+                              return {
+                                ...prev,
+                                worker: {
+                                  ...prev.worker,
+                                  department: e.target.value
+                                }
+                              };
+                            });
                           }}
                           className="text-sm border border-gray-300 rounded px-2 py-1 flex-1"
                           placeholder="Enter location"
@@ -1302,16 +1308,19 @@ export default function TimesheetsPage() {
                           value={editingTimesheet?.worker?.project?.client?._id || ''}
                           onChange={(e) => {
                             const client = clients.find(c => c._id === e.target.value);
-                            setEditingTimesheet(prev => ({
-                              ...prev,
-                              worker: {
-                                ...prev.worker,
-                                project: {
-                                  ...prev.worker?.project,
-                                  client: client || null
+                            setEditingTimesheet((prev: WeeklyTimesheet | null) => {
+                              if (!prev) return prev;
+                              return {
+                                ...prev,
+                                worker: {
+                                  ...prev.worker,
+                                  project: {
+                                    ...prev.worker?.project,
+                                    client: client || undefined
+                                  }
                                 }
-                              }
-                            }));
+                              };
+                            });
                           }}
                           className="text-sm border border-gray-300 rounded px-2 py-1 flex-1"
                         >
@@ -1335,13 +1344,16 @@ export default function TimesheetsPage() {
                           value={editingTimesheet?.worker?.project?._id || ''}
                           onChange={(e) => {
                             const project = projects.find(p => p._id === e.target.value);
-                            setEditingTimesheet(prev => ({
-                              ...prev,
-                              worker: {
-                                ...prev.worker,
-                                project: project || null
-                              }
-                            }));
+                            setEditingTimesheet((prev: WeeklyTimesheet | null) => {
+                              if (!prev) return prev;
+                              return {
+                                ...prev,
+                                worker: {
+                                  ...prev.worker,
+                                  project: project || undefined
+                                }
+                              };
+                            });
                           }}
                           className="text-sm border border-gray-300 rounded px-2 py-1 flex-1"
                         >
@@ -1377,7 +1389,7 @@ export default function TimesheetsPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {(isEditMode ? editingTimesheet : selectedWeeklyTimesheet).dailyEntries.map((dayEntry, index) => {
+                    {(isEditMode ? editingTimesheet : selectedWeeklyTimesheet)?.dailyEntries?.map((dayEntry: DailyEntry, index: number) => {
                       const isLeaveDay = dayEntry.leaveType || (dayEntry.isAbsent && !dayEntry.clockIn);
                       const leaveLabel = dayEntry.leaveType || (isLeaveDay ? 'Absent' : '');
                       const isPH = dayEntry.leaveType === 'PH';
@@ -1394,10 +1406,13 @@ export default function TimesheetsPage() {
                                 value={editingTimesheet?.task?._id || ''}
                                 onChange={(e) => {
                                   const task = tasks.find(t => t._id === e.target.value);
-                                  setEditingTimesheet(prev => ({
-                                    ...prev,
-                                    task: task || null
-                                  }));
+                                  setEditingTimesheet((prev: WeeklyTimesheet | null) => {
+                                    if (!prev) return prev;
+                                    return {
+                                      ...prev,
+                                      task: task || undefined
+                                    };
+                                  });
                                 }}
                                 className="w-full text-xs border border-gray-300 rounded px-1 py-0.5"
                               >

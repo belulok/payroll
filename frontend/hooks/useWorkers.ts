@@ -41,11 +41,19 @@ interface Worker {
   passportIssueDate?: string;
   passportExpiryDate?: string;
   passportCountry?: string;
-  payrollInfo: {
+  profilePicture?: string;
+  profilePictureFileName?: string;
+  payrollInfo?: {
     monthlySalary?: number;
     hourlyRate?: number;
     unitRates?: Array<{ unitType: string; ratePerUnit: number }>;
-    currency: string;
+    currency?: string;
+    bankName?: string;
+    bankAccountNumber?: string;
+    bankAccountName?: string;
+    epfNumber?: string;
+    socsoNumber?: string;
+    taxNumber?: string;
   };
   leaveTier?: string;
   user?: string;

@@ -9,6 +9,11 @@ export interface JobGrade {
   description?: string;
   jobBand?: string;
   level: number;
+  salaryRange?: {
+    min?: number;
+    max?: number;
+    currency?: string;
+  };
   isActive: boolean;
   notes?: string;
   createdAt?: string;

@@ -13,6 +13,7 @@ import {
   ClipboardDocumentIcon,
   CheckCircleIcon,
   XCircleIcon,
+  XMarkIcon,
   EyeIcon,
   EyeSlashIcon,
 } from '@heroicons/react/24/outline';

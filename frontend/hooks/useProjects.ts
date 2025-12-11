@@ -4,8 +4,28 @@ import feathersClient from '@/lib/feathers';
 interface Client {
   _id: string;
   name: string;
+  company: string;
   contactPerson?: string;
   email?: string;
+  phone?: string;
+  address?: {
+    street?: string;
+    city?: string;
+    state?: string;
+    postcode?: string;
+    country?: string;
+  };
+  timesheetSettings?: {
+    minuteIncrement: 1 | 5 | 6 | 10 | 15 | 30 | 60;
+    roundingMethod: 'nearest' | 'up' | 'down';
+    minHoursPerDay: number;
+    maxHoursPerDay: number;
+    allowOvertime: boolean;
+    maxOTHoursPerDay: number;
+  };
+  isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface Project {

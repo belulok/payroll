@@ -23,6 +23,18 @@ interface Company {
   paymentTypes: string[];
   isActive: boolean;
   workerCount?: number;
+  approvalStatus?: 'pending' | 'approved' | 'rejected';
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectionReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  agent?: {
+    _id: string;
+    firstName: string;
+    lastName: string;
+    email: string;
+  };
 }
 
 export function useCompanies() {

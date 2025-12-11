@@ -5,7 +5,7 @@ export interface Loan {
   _id: string;
   loanId: string;
   category: 'loan' | 'advance';
-  worker: {
+  worker: string | {
     _id: string;
     firstName: string;
     lastName: string;
@@ -149,7 +149,7 @@ export function useRecordLoanPayment() {
       payrollRecordId?: string;
       installmentNumber?: number;
     }) => {
-      return await feathersClient.service('loans').recordPayment(loanId, {
+      return await (feathersClient.service('loans') as any).recordPayment(loanId, {
         amount,
         payrollRecordId,
         installmentNumber

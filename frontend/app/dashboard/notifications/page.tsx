@@ -92,7 +92,7 @@ export default function NotificationsPage() {
     }
   };
 
-  const uniqueTypes = [...new Set(notifications.map((n: Notification) => n.type))];
+  const uniqueTypes = Array.from(new Set(notifications.map((n: Notification) => n.type))) as string[];
 
   return (
     <div className="space-y-6">

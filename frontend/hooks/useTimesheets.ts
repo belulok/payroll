@@ -29,11 +29,27 @@ interface DailyEntry {
 
 interface WeeklyTimesheet {
   _id: string;
+  company?: {
+    _id: string;
+    name: string;
+  };
   worker: {
     _id: string;
     firstName: string;
     lastName: string;
     employeeId: string;
+    lineManager?: {
+      firstName: string;
+      lastName: string;
+    };
+    project?: {
+      name: string;
+      client?: {
+        name: string;
+      };
+    };
+    department?: string;
+    position?: string;
   };
   task?: {
     _id: string;
@@ -48,6 +64,13 @@ interface WeeklyTimesheet {
   totalOT2_0Hours: number;
   totalHours: number;
   status: string;
+  verifiedBy?: string;
+  verifiedAt?: string;
+  approvedBy?: string;
+  approvedAt?: string;
+  rejectedBy?: string;
+  rejectedAt?: string;
+  rejectionReason?: string;
 }
 
 export function useTimesheets(companyId?: string, weekStart?: Date) {

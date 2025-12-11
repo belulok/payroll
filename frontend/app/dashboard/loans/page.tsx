@@ -153,7 +153,7 @@ export default function LoansPage() {
     }
   };
 
-  const filteredLoans = loans.filter(loan => {
+  const filteredLoans = loans.filter((loan: Loan) => {
     if (filter === 'all') return true;
     return loan.status === filter;
   });
@@ -235,7 +235,7 @@ export default function LoansPage() {
             <div>
               <p className="text-sm font-medium text-gray-600">Active</p>
               <p className="text-2xl font-bold text-blue-600">
-                {loans.filter(l => l.status === 'active').length}
+                {loans.filter((l: Loan) => l.status === 'active').length}
               </p>
             </div>
             <ClockIcon className="h-8 w-8 text-blue-600" />
@@ -247,7 +247,7 @@ export default function LoansPage() {
             <div>
               <p className="text-sm font-medium text-gray-600">Completed</p>
               <p className="text-2xl font-bold text-green-600">
-                {loans.filter(l => l.status === 'completed').length}
+                {loans.filter((l: Loan) => l.status === 'completed').length}
               </p>
             </div>
             <CheckCircleIcon className="h-8 w-8 text-green-600" />
@@ -259,7 +259,7 @@ export default function LoansPage() {
             <div>
               <p className="text-sm font-medium text-gray-600">Total Outstanding</p>
               <p className="text-2xl font-bold text-orange-600">
-                {loans.reduce((sum, loan) => sum + (loan.remainingAmount || 0), 0).toLocaleString('en-MY', {
+                {loans.reduce((sum: number, loan: Loan) => sum + (loan.remainingAmount || 0), 0).toLocaleString('en-MY', {
                   style: 'currency',
                   currency: 'MYR'
                 })}
@@ -276,10 +276,10 @@ export default function LoansPage() {
           <div className="flex flex-wrap gap-2">
             {[
               { key: 'all', label: 'All Records', count: loans.length },
-              { key: 'active', label: 'Active', count: loans.filter(l => l.status === 'active').length },
-              { key: 'completed', label: 'Completed', count: loans.filter(l => l.status === 'completed').length },
-              { key: 'cancelled', label: 'Cancelled', count: loans.filter(l => l.status === 'cancelled').length },
-              { key: 'defaulted', label: 'Defaulted', count: loans.filter(l => l.status === 'defaulted').length }
+              { key: 'active', label: 'Active', count: loans.filter((l: Loan) => l.status === 'active').length },
+              { key: 'completed', label: 'Completed', count: loans.filter((l: Loan) => l.status === 'completed').length },
+              { key: 'cancelled', label: 'Cancelled', count: loans.filter((l: Loan) => l.status === 'cancelled').length },
+              { key: 'defaulted', label: 'Defaulted', count: loans.filter((l: Loan) => l.status === 'defaulted').length }
             ].map((filterOption) => (
               <button
                 key={filterOption.key}
@@ -348,7 +348,7 @@ export default function LoansPage() {
                 </td>
               </tr>
             ) : (
-              filteredLoans.map((loan) => {
+              filteredLoans.map((loan: Loan) => {
                 const worker = typeof loan.worker === 'object' ? loan.worker : null;
                 const progressPercentage = loan.totalAmount > 0
                   ? ((loan.totalPaidAmount / loan.totalAmount) * 100)
@@ -534,7 +534,7 @@ export default function LoansPage() {
                     </label>
                     <select
                       required
-                      value={formData.worker || ''}
+                      value={typeof formData.worker === 'object' ? formData.worker._id : (formData.worker || '')}
                       onChange={(e) => setFormData({ ...formData, worker: e.target.value })}
                       className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     >
@@ -757,14 +757,14 @@ export default function LoansPage() {
               </div>
 
               {/* Summary */}
-              {formData.principalAmount > 0 && (
+              {(formData.principalAmount ?? 0) > 0 && (
                 <div className="bg-gray-50 rounded-lg p-4">
                   <h4 className="text-sm font-semibold text-gray-900 mb-2">Summary</h4>
                   <div className="grid grid-cols-2 gap-4 text-sm">
                     <div>
                       <span className="text-gray-600">Principal Amount:</span>
                       <span className="ml-2 font-medium">
-                        {formData.principalAmount.toLocaleString('en-MY', {
+                        {(formData.principalAmount ?? 0).toLocaleString('en-MY', {
                           style: 'currency',
                           currency: formData.currency || 'MYR'
                         })}
@@ -773,7 +773,7 @@ export default function LoansPage() {
                     <div>
                       <span className="text-gray-600">Interest ({formData.interestRate || 0}%):</span>
                       <span className="ml-2 font-medium">
-                        {((formData.principalAmount * (formData.interestRate || 0)) / 100).toLocaleString('en-MY', {
+                        {(((formData.principalAmount ?? 0) * (formData.interestRate || 0)) / 100).toLocaleString('en-MY', {
                           style: 'currency',
                           currency: formData.currency || 'MYR'
                         })}
@@ -782,17 +782,17 @@ export default function LoansPage() {
                     <div className="col-span-2 pt-2 border-t border-gray-200">
                       <span className="text-gray-900 font-semibold">Total Amount:</span>
                       <span className="ml-2 font-bold text-lg">
-                        {(formData.principalAmount * (1 + (formData.interestRate || 0) / 100)).toLocaleString('en-MY', {
+                        {((formData.principalAmount ?? 0) * (1 + (formData.interestRate || 0) / 100)).toLocaleString('en-MY', {
                           style: 'currency',
                           currency: formData.currency || 'MYR'
                         })}
                       </span>
                     </div>
-                    {formData.hasInstallments && formData.installmentType === 'fixed_count' && formData.installmentCount > 0 && (
+                    {formData.hasInstallments && formData.installmentType === 'fixed_count' && (formData.installmentCount ?? 0) > 0 && (
                       <div className="col-span-2">
                         <span className="text-gray-600">Payment per Month:</span>
                         <span className="ml-2 font-medium">
-                          {((formData.principalAmount * (1 + (formData.interestRate || 0) / 100)) / formData.installmentCount).toLocaleString('en-MY', {
+                          {(((formData.principalAmount ?? 0) * (1 + (formData.interestRate || 0) / 100)) / (formData.installmentCount || 1)).toLocaleString('en-MY', {
                             style: 'currency',
                             currency: formData.currency || 'MYR'
                           })}

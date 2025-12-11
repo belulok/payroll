@@ -45,14 +45,14 @@ interface Company {
   approvedBy?: string;
   approvedAt?: string;
   rejectionReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
   agent?: {
     _id: string;
     firstName: string;
     lastName: string;
     email: string;
   };
-  createdAt: string;
-  updatedAt: string;
 }
 
 const approvalStatusConfig = {

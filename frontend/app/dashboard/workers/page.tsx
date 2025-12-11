@@ -138,11 +138,11 @@ interface Worker {
   joinDate?: string;
   isActive?: boolean;
   // Payroll
-  payrollInfo: {
+  payrollInfo?: {
     monthlySalary?: number;
     hourlyRate?: number;
     unitRates?: Array<{ unitType: string; ratePerUnit: number }>;
-    currency: string;
+    currency?: string;
     bankName?: string;
     bankAccountNumber?: string;
     bankAccountName?: string;
@@ -266,8 +266,8 @@ export default function WorkersPage() {
 	const { data: formWorkers = [] } = useWorkers(formCompanyId);
 	const { data: formClients = [] } = useClients(formCompanyId);
 	const { data: formProjects = [] } = useProjects(formCompanyId);
-	const { data: jobBands = [] } = useJobBands({ isActive: true });
-	const { data: workerGroups = [] } = useWorkerGroups({ isActive: true });
+const { data: jobBands = [] } = useJobBands(formCompanyId, { isActive: true });
+        const { data: workerGroups = [] } = useWorkerGroups(formCompanyId, { isActive: true });
 	const { data: departments = [] } = useDepartments(formCompanyId);
 
   // Document hooks - only fetch when editing a worker
@@ -476,11 +476,11 @@ export default function WorkersPage() {
 
   const getPaymentDisplay = (worker: Worker) => {
     if (worker.paymentType === 'monthly-salary') {
-      return `RM ${worker.payrollInfo.monthlySalary?.toLocaleString()}/month`;
+      return `RM ${worker.payrollInfo?.monthlySalary?.toLocaleString()}/month`;
     } else if (worker.paymentType === 'hourly') {
-      return `RM ${worker.payrollInfo.hourlyRate}/hour`;
+      return `RM ${worker.payrollInfo?.hourlyRate}/hour`;
     } else {
-      const rates = worker.payrollInfo.unitRates || [];
+      const rates = worker.payrollInfo?.unitRates || [];
       if (rates.length > 0) {
         return `${rates.length} rate${rates.length > 1 ? 's' : ''}`;
       }

@@ -79,27 +79,27 @@ export default function OrganizationPage() {
   // Filter data on frontend based on filter state
   const departments = departmentFilter === 'all'
     ? allDepartments
-    : allDepartments.filter(d => d.isActive === (departmentFilter === 'active'));
+    : allDepartments.filter((d: Department) => d.isActive === (departmentFilter === 'active'));
 
   const positions = positionFilter === 'all'
     ? allPositions
-    : allPositions.filter(p => p.isActive === (positionFilter === 'active'));
+    : allPositions.filter((p: Position) => p.isActive === (positionFilter === 'active'));
 
   const jobBands = jobBandFilter === 'all'
     ? allJobBands
-    : allJobBands.filter(b => b.isActive === (jobBandFilter === 'active'));
+    : allJobBands.filter((b: JobBand) => b.isActive === (jobBandFilter === 'active'));
 
   const jobGrades = jobGradeFilter === 'all'
     ? allJobGrades
-    : allJobGrades.filter(g => g.isActive === (jobGradeFilter === 'active'));
+    : allJobGrades.filter((g: JobGrade) => g.isActive === (jobGradeFilter === 'active'));
 
   const groups = groupFilter === 'all'
     ? allGroups
-    : allGroups.filter(g => g.isActive === (groupFilter === 'active'));
+    : allGroups.filter((g: WorkerGroup) => g.isActive === (groupFilter === 'active'));
 
   const tasks = taskFilter === 'all'
     ? allTasks
-    : allTasks.filter(t => t.isActive === (taskFilter === 'active'));
+    : allTasks.filter((t: Task) => t.isActive === (taskFilter === 'active'));
 
   // Mutations
   const createDepartment = useCreateDepartment();
@@ -532,7 +532,7 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
               filter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            Active ({allDepartments.filter(d => d.isActive).length})
+            Active ({allDepartments.filter((d: Department) => d.isActive).length})
           </button>
           <button
             onClick={() => setFilter('inactive')}
@@ -540,7 +540,7 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
               filter === 'inactive' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            Inactive ({allDepartments.filter(d => !d.isActive).length})
+            Inactive ({allDepartments.filter((d: Department) => !d.isActive).length})
           </button>
         </div>
         <button
@@ -728,7 +728,7 @@ function DepartmentFormModal({ department, departments, onClose, onSave }: {
               >
                 <option value="">None</option>
                 {departments
-                  .filter(d => d._id !== department?._id)
+                  .filter((d: Department) => d._id !== department?._id)
                   .map((d) => (
                     <option key={d._id} value={d._id}>
                       {d.name}
@@ -828,7 +828,7 @@ function PositionsTab({ positions, allPositions, departments, jobBands, jobGrade
               filter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            Active ({allPositions.filter(p => p.isActive).length})
+            Active ({allPositions.filter((p: Position) => p.isActive).length})
           </button>
           <button
             onClick={() => setFilter('inactive')}
@@ -836,7 +836,7 @@ function PositionsTab({ positions, allPositions, departments, jobBands, jobGrade
               filter === 'inactive' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
-            Inactive ({allPositions.filter(p => !p.isActive).length})
+            Inactive ({allPositions.filter((p: Position) => !p.isActive).length})
           </button>
         </div>
         <button
@@ -1046,7 +1046,7 @@ function PositionFormModal({ position, departments, jobBands, jobGrades, positio
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm"
               >
                 <option value="">Select Department</option>
-                {departments.filter(d => d.isActive).map((d) => (
+                {departments.filter((d: Department) => d.isActive).map((d) => (
                   <option key={d._id} value={d._id}>
                     {d.name}
                   </option>
@@ -1101,7 +1101,7 @@ function PositionFormModal({ position, departments, jobBands, jobGrades, positio
               >
                 <option value="">None</option>
                 {positions
-                  .filter(p => p._id !== position?._id && p.isActive)
+                  .filter((p: Position) => p._id !== position?._id && p.isActive)
                   .map((p) => (
                     <option key={p._id} value={p._id}>
                       {p.title}

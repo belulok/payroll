@@ -42,6 +42,8 @@ interface Client {
     maxOTHoursPerDay: number;
   };
   isActive: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 interface ProjectLocation {

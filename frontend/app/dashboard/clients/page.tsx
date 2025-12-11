@@ -1172,46 +1172,47 @@ export default function ClientsPage() {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Clients & Projects</h1>
-        <p className="text-gray-600 mt-2">Manage clients and projects for {selectedCompany?.name}</p>
+        <h1 className="text-xl md:text-3xl font-bold text-gray-900">Clients & Projects</h1>
+        <p className="text-xs md:text-base text-gray-600 mt-1">Manage clients and projects for {selectedCompany?.name}</p>
       </div>
 
       {/* Main Tabs - Prominent at the top */}
-      <div className="flex items-center justify-between gap-4">
-        <div className="border-b border-gray-200 inline-flex gap-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="border-b border-gray-200 inline-flex gap-4 md:gap-8">
           <button
             onClick={() => setActiveTab('clients')}
-            className={`px-4 py-3 font-semibold transition-colors flex items-center gap-2 border-b-2 ${
+            className={`px-2 py-2 md:px-4 md:py-3 font-semibold transition-colors flex items-center gap-1.5 md:gap-2 border-b-2 text-xs md:text-sm ${
               activeTab === 'clients'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            <BuildingOffice2Icon className="h-5 w-5" />
+            <BuildingOffice2Icon className="h-4 w-4 md:h-5 md:w-5" />
             Clients
           </button>
           <button
             onClick={() => setActiveTab('projects')}
-            className={`px-4 py-3 font-semibold transition-colors flex items-center gap-2 border-b-2 ${
+            className={`px-2 py-2 md:px-4 md:py-3 font-semibold transition-colors flex items-center gap-1.5 md:gap-2 border-b-2 text-xs md:text-sm ${
               activeTab === 'projects'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
             }`}
           >
-            <BriefcaseIcon className="h-5 w-5" />
+            <BriefcaseIcon className="h-4 w-4 md:h-5 md:w-5" />
             Projects
           </button>
         </div>
 
         <button
           onClick={activeTab === 'clients' ? handleAddClient : handleAddProject}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-md flex items-center gap-2"
+          className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-1.5 px-3 md:py-2 md:px-6 rounded-lg transition-colors shadow-md flex items-center justify-center gap-1.5 md:gap-2 text-xs md:text-sm"
         >
-          <PlusIcon className="h-5 w-5" />
-          {activeTab === 'clients' ? 'Add Client' : 'Add Project'}
+          <PlusIcon className="h-4 w-4 md:h-5 md:w-5" />
+          <span className="hidden sm:inline">{activeTab === 'clients' ? 'Add Client' : 'Add Project'}</span>
+          <span className="sm:hidden">Add {activeTab === 'clients' ? 'Client' : 'Project'}</span>
         </button>
       </div>
 
@@ -1219,10 +1220,10 @@ export default function ClientsPage() {
       {activeTab === 'clients' && (
         <>
           {/* Filter Tabs - Below main tabs */}
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1 inline-flex">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-0.5 md:p-1 inline-flex overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setClientFilter('all')}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-md font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
                 clientFilter === 'all' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -1230,7 +1231,7 @@ export default function ClientsPage() {
             </button>
             <button
               onClick={() => setClientFilter('active')}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-md font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
                 clientFilter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -1238,7 +1239,7 @@ export default function ClientsPage() {
             </button>
             <button
               onClick={() => setClientFilter('inactive')}
-              className={`px-4 py-2 rounded-md font-medium transition-colors ${
+              className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-md font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
                 clientFilter === 'inactive' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
               }`}
             >
@@ -1248,24 +1249,24 @@ export default function ClientsPage() {
 
           {/* Clients Grid */}
           {filteredClients.length === 0 ? (
-            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-12 text-center">
-              <BuildingOffice2Icon className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">No clients found</h3>
-              <p className="text-gray-600 mb-6">Get started by adding your first client</p>
+            <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8 md:p-12 text-center">
+              <BuildingOffice2Icon className="h-12 w-12 md:h-16 md:w-16 text-gray-400 mx-auto mb-3 md:mb-4" />
+              <h3 className="text-base md:text-lg font-semibold text-gray-900 mb-2">No clients found</h3>
+              <p className="text-xs md:text-base text-gray-600 mb-4 md:mb-6">Get started by adding your first client</p>
               <button
                 onClick={handleAddClient}
-                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors inline-flex items-center gap-2"
+                className="bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-1.5 px-4 md:py-2 md:px-6 rounded-lg transition-colors inline-flex items-center gap-1.5 md:gap-2 text-xs md:text-sm"
               >
-                <PlusIcon className="h-5 w-5" />
+                <PlusIcon className="h-4 w-4 md:h-5 md:w-5" />
                 Add Client
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 md:gap-6">
               {filteredClients.map((client) => (
                 <div
                   key={client._id}
-                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow"
+                  className="bg-white rounded-lg shadow-sm border border-gray-200 p-3 md:p-6 hover:shadow-md transition-shadow"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">

@@ -76,7 +76,7 @@ export function useCompanies() {
 
 export function useCreateCompany() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (data: Partial<Company>) => {
       return await feathersClient.service('companies').create(data);
@@ -89,7 +89,7 @@ export function useCreateCompany() {
 
 export function useUpdateCompany() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Company> }) => {
       return await feathersClient.service('companies').patch(id, data);
@@ -102,7 +102,7 @@ export function useUpdateCompany() {
 
 export function useDeleteCompany() {
   const queryClient = useQueryClient();
-  
+
   return useMutation({
     mutationFn: async (id: string) => {
       return await feathersClient.service('companies').remove(id);

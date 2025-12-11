@@ -291,30 +291,31 @@ export default function OrganizationPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3 md:space-y-6">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Organizational Structure</h1>
-          <p className="mt-1 text-sm text-gray-500">
+          <h1 className="text-xl md:text-2xl font-bold text-gray-900">Organizational Structure</h1>
+          <p className="mt-1 text-xs md:text-sm text-gray-500">
             Manage departments, positions, job bands, job grades, and tasks
           </p>
         </div>
       </div>
 
-      {/* Tabs */}
-      <div className="border-b border-gray-200">
-        <nav className="-mb-px flex space-x-8">
+      {/* Tabs - Scrollable on mobile */}
+      <div className="border-b border-gray-200 overflow-x-auto scrollbar-hide">
+        <nav className="-mb-px flex space-x-3 md:space-x-8 min-w-max">
           <button
             onClick={() => setActiveTab('departments')}
             className={`${
               activeTab === 'departments'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            } whitespace-nowrap py-2 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm flex items-center gap-1 md:gap-2`}
           >
-            <BuildingOfficeIcon className="h-5 w-5" />
-            Departments
+            <BuildingOfficeIcon className="h-4 w-4 md:h-5 md:w-5" />
+            <span className="hidden sm:inline">Departments</span>
+            <span className="sm:hidden">Depts</span>
           </button>
           <button
             onClick={() => setActiveTab('positions')}
@@ -322,10 +323,11 @@ export default function OrganizationPage() {
               activeTab === 'positions'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            } whitespace-nowrap py-2 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm flex items-center gap-1 md:gap-2`}
           >
-            <BriefcaseIcon className="h-5 w-5" />
-            Positions
+            <BriefcaseIcon className="h-4 w-4 md:h-5 md:w-5" />
+            <span className="hidden sm:inline">Positions</span>
+            <span className="sm:hidden">Pos</span>
           </button>
           <button
             onClick={() => setActiveTab('job-structure')}
@@ -333,10 +335,11 @@ export default function OrganizationPage() {
               activeTab === 'job-structure'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            } whitespace-nowrap py-2 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm flex items-center gap-1 md:gap-2`}
           >
-            <ChartBarIcon className="h-5 w-5" />
-            Job Bands & Grades
+            <ChartBarIcon className="h-4 w-4 md:h-5 md:w-5" />
+            <span className="hidden sm:inline">Job Bands & Grades</span>
+            <span className="sm:hidden">Job Bands</span>
           </button>
           <button
             onClick={() => setActiveTab('groups')}
@@ -344,9 +347,9 @@ export default function OrganizationPage() {
               activeTab === 'groups'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            } whitespace-nowrap py-2 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm flex items-center gap-1 md:gap-2`}
           >
-            <UserGroupIcon className="h-5 w-5" />
+            <UserGroupIcon className="h-4 w-4 md:h-5 md:w-5" />
             Groups
           </button>
           <button
@@ -355,9 +358,9 @@ export default function OrganizationPage() {
               activeTab === 'tasks'
                 ? 'border-indigo-600 text-indigo-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-            } whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm flex items-center gap-2`}
+            } whitespace-nowrap py-2 md:py-4 px-1 border-b-2 font-medium text-xs md:text-sm flex items-center gap-1 md:gap-2`}
           >
-            <ClipboardDocumentListIcon className="h-5 w-5" />
+            <ClipboardDocumentListIcon className="h-4 w-4 md:h-5 md:w-5" />
             Tasks
           </button>
         </nav>
@@ -514,13 +517,13 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
   onDelete: (id: string) => void;
 }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 md:space-y-4">
       {/* Filter Tabs and Add Button */}
-      <div className="flex justify-between items-center">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-1 inline-flex">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-0.5 md:p-1 inline-flex overflow-x-auto scrollbar-hide">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-md font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'all' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
@@ -528,7 +531,7 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
           </button>
           <button
             onClick={() => setFilter('active')}
-            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-md font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'active' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
@@ -536,7 +539,7 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
           </button>
           <button
             onClick={() => setFilter('inactive')}
-            className={`px-4 py-2 rounded-md font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-md font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'inactive' ? 'bg-indigo-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
@@ -545,10 +548,11 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
         </div>
         <button
           onClick={onAdd}
-          className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
+          className="inline-flex items-center px-2.5 py-1.5 md:px-4 md:py-2 border border-transparent text-xs md:text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700"
         >
-          <PlusIcon className="h-5 w-5 mr-2" />
-          Add Department
+          <PlusIcon className="h-4 w-4 md:h-5 md:w-5 mr-1 md:mr-2" />
+          <span className="hidden sm:inline">Add Department</span>
+          <span className="sm:hidden">Add Dept</span>
         </button>
       </div>
 
@@ -558,22 +562,22 @@ function DepartmentsTab({ departments, allDepartments, isLoading, filter, setFil
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600"></div>
         </div>
       ) : departments.length === 0 ? (
-        <div className="text-center py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
-          <BuildingOfficeIcon className="mx-auto h-12 w-12 text-gray-400" />
+        <div className="text-center py-8 md:py-12 bg-white rounded-lg border-2 border-dashed border-gray-300">
+          <BuildingOfficeIcon className="mx-auto h-10 w-10 md:h-12 md:w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No departments</h3>
-          <p className="mt-1 text-sm text-gray-500">Get started by creating a new department.</p>
-          <div className="mt-6">
+          <p className="mt-1 text-xs md:text-sm text-gray-500">Get started by creating a new department.</p>
+          <div className="mt-4 md:mt-6">
             <button
               onClick={onAdd}
-              className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
+              className="inline-flex items-center px-3 py-1.5 md:px-4 md:py-2 border border-transparent shadow-sm text-xs md:text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700"
             >
-              <PlusIcon className="h-5 w-5 mr-2" />
+              <PlusIcon className="h-4 w-4 md:h-5 md:w-5 mr-1.5 md:mr-2" />
               Add Department
             </button>
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-lg shadow overflow-x-auto">
+        <div className="bg-white rounded-lg shadow overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>

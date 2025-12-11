@@ -155,69 +155,69 @@ export default function LeaveRequestsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-3 md:space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Leave Requests</h1>
-          <p className="text-gray-600 mt-2">Manage employee leave requests and approvals</p>
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Leave Requests</h1>
+          <p className="text-xs md:text-base text-gray-600 mt-1">Manage employee leave requests and approvals</p>
         </div>
 
         {/* View Mode Toggle */}
-        <div className="flex gap-2">
+        <div className="flex gap-1.5 md:gap-2">
           <button
             onClick={() => setViewMode('table')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm ${
               viewMode === 'table'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            <TableCellsIcon className="h-5 w-5" />
+            <TableCellsIcon className="h-4 w-4 md:h-5 md:w-5" />
             Table
           </button>
           <button
             onClick={() => setViewMode('calendar')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm ${
               viewMode === 'calendar'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-white text-gray-700 hover:bg-gray-100'
             }`}
           >
-            <CalendarIcon className="h-5 w-5" />
+            <CalendarIcon className="h-4 w-4 md:h-5 md:w-5" />
             Calendar
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600 font-medium">Total Requests</p>
-          <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+      {/* Stats Cards - Compact on mobile */}
+      <div className="grid grid-cols-3 md:grid-cols-5 gap-2 md:gap-4">
+        <div className="bg-white rounded-lg shadow-md p-2 md:p-6">
+          <p className="text-[10px] md:text-sm text-gray-600 font-medium">Total</p>
+          <p className="text-lg md:text-3xl font-bold text-gray-900 mt-0.5 md:mt-2">{stats.total}</p>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600 font-medium">Pending</p>
-          <p className="text-3xl font-bold text-yellow-600 mt-2">{stats.pending}</p>
+        <div className="bg-white rounded-lg shadow-md p-2 md:p-6">
+          <p className="text-[10px] md:text-sm text-gray-600 font-medium">Pending</p>
+          <p className="text-lg md:text-3xl font-bold text-yellow-600 mt-0.5 md:mt-2">{stats.pending}</p>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600 font-medium">Approved</p>
-          <p className="text-3xl font-bold text-green-600 mt-2">{stats.approved}</p>
+        <div className="bg-white rounded-lg shadow-md p-2 md:p-6">
+          <p className="text-[10px] md:text-sm text-gray-600 font-medium">Approved</p>
+          <p className="text-lg md:text-3xl font-bold text-green-600 mt-0.5 md:mt-2">{stats.approved}</p>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600 font-medium">Rejected</p>
-          <p className="text-3xl font-bold text-red-600 mt-2">{stats.rejected}</p>
+        <div className="bg-white rounded-lg shadow-md p-2 md:p-6 hidden md:block">
+          <p className="text-[10px] md:text-sm text-gray-600 font-medium">Rejected</p>
+          <p className="text-lg md:text-3xl font-bold text-red-600 mt-0.5 md:mt-2">{stats.rejected}</p>
         </div>
-        <div className="bg-white rounded-lg shadow-md p-6">
-          <p className="text-sm text-gray-600 font-medium">Cancelled</p>
-          <p className="text-3xl font-bold text-gray-600 mt-2">{stats.cancelled}</p>
+        <div className="bg-white rounded-lg shadow-md p-2 md:p-6 hidden md:block">
+          <p className="text-[10px] md:text-sm text-gray-600 font-medium">Cancelled</p>
+          <p className="text-lg md:text-3xl font-bold text-gray-600 mt-0.5 md:mt-2">{stats.cancelled}</p>
         </div>
       </div>
 
-      {/* Filters */}
-      <div className="flex gap-2">
+      {/* Filters - Scrollable on mobile */}
+      <div className="flex gap-1.5 md:gap-2 overflow-x-auto pb-1 scrollbar-hide">
         <button
           onClick={() => setFilter('all')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
             filter === 'all' ? 'bg-indigo-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
           }`}
         >
@@ -225,7 +225,7 @@ export default function LeaveRequestsPage() {
         </button>
         <button
           onClick={() => setFilter('pending')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
             filter === 'pending' ? 'bg-yellow-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
           }`}
         >
@@ -233,7 +233,7 @@ export default function LeaveRequestsPage() {
         </button>
         <button
           onClick={() => setFilter('approved')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
             filter === 'approved' ? 'bg-green-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
           }`}
         >
@@ -241,7 +241,7 @@ export default function LeaveRequestsPage() {
         </button>
         <button
           onClick={() => setFilter('rejected')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
             filter === 'rejected' ? 'bg-red-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
           }`}
         >
@@ -249,7 +249,7 @@ export default function LeaveRequestsPage() {
         </button>
         <button
           onClick={() => setFilter('cancelled')}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
             filter === 'cancelled' ? 'bg-gray-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-100'
           }`}
         >

@@ -497,26 +497,27 @@ const { data: jobBands = [] } = useJobBands(formCompanyId, { isActive: true });
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-3 md:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Workers</h1>
-          <p className="text-gray-600 mt-2">Manage employee records and information</p>
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Workers</h1>
+          <p className="text-xs md:text-base text-gray-600 mt-1">Manage employee records and information</p>
         </div>
         <button
           onClick={handleAddWorker}
-          className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-2 px-6 rounded-lg transition-colors shadow-md"
+          className="flex items-center justify-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-1.5 px-3 md:py-2 md:px-6 rounded-lg transition-colors shadow-md text-xs md:text-sm"
         >
-          <PlusIcon className="h-5 w-5" />
+          <PlusIcon className="h-4 w-4 md:h-5 md:w-5" />
           Add Worker
         </button>
       </div>
 
       {/* Active/Archived Tabs */}
-      <div className="flex gap-2">
+      <div className="flex gap-1.5 md:gap-2">
         <button
           onClick={() => setShowArchived(false)}
-          className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm ${
             !showArchived
               ? 'bg-indigo-600 text-white'
               : 'bg-white text-gray-700 hover:bg-gray-100'
@@ -526,71 +527,71 @@ const { data: jobBands = [] } = useJobBands(formCompanyId, { isActive: true });
         </button>
         <button
           onClick={() => setShowArchived(true)}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium transition-colors ${
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm ${
             showArchived
               ? 'bg-indigo-600 text-white'
               : 'bg-white text-gray-700 hover:bg-gray-100'
           }`}
         >
-          <ArchiveBoxIcon className="h-5 w-5" />
+          <ArchiveBoxIcon className="h-4 w-4 md:h-5 md:w-5" />
           Archived ({archivedWorkers.length})
         </button>
       </div>
 
-      {/* Stats Cards */}
+      {/* Stats Cards - Compact on mobile */}
       {!showArchived && (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg shadow p-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
+          <div className="bg-white rounded-lg shadow p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600">Total Workers</p>
-                <p className="text-2xl font-bold text-gray-900">{activeWorkers.length}</p>
+                <p className="text-[10px] md:text-sm text-gray-600">Total Workers</p>
+                <p className="text-lg md:text-2xl font-bold text-gray-900">{activeWorkers.length}</p>
               </div>
-              <UserGroupIcon className="h-10 w-10 text-gray-400" />
+              <UserGroupIcon className="h-6 w-6 md:h-10 md:w-10 text-gray-400" />
             </div>
           </div>
-          <div className="bg-blue-50 rounded-lg shadow p-6">
+          <div className="bg-blue-50 rounded-lg shadow p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-blue-600">Monthly Salary</p>
-                <p className="text-2xl font-bold text-blue-900">
+                <p className="text-[10px] md:text-sm text-blue-600">Monthly Salary</p>
+                <p className="text-lg md:text-2xl font-bold text-blue-900">
                   {activeWorkers.filter(w => w.paymentType === 'monthly-salary').length}
                 </p>
               </div>
-              <CurrencyDollarIcon className="h-10 w-10 text-blue-400" />
+              <CurrencyDollarIcon className="h-6 w-6 md:h-10 md:w-10 text-blue-400" />
             </div>
           </div>
-          <div className="bg-green-50 rounded-lg shadow p-6">
+          <div className="bg-green-50 rounded-lg shadow p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-green-600">Hourly</p>
-                <p className="text-2xl font-bold text-green-900">
+                <p className="text-[10px] md:text-sm text-green-600">Hourly</p>
+                <p className="text-lg md:text-2xl font-bold text-green-900">
                   {activeWorkers.filter(w => w.paymentType === 'hourly').length}
                 </p>
               </div>
-              <ClockIcon className="h-10 w-10 text-green-400" />
+              <ClockIcon className="h-6 w-6 md:h-10 md:w-10 text-green-400" />
             </div>
           </div>
-          <div className="bg-purple-50 rounded-lg shadow p-6">
+          <div className="bg-purple-50 rounded-lg shadow p-3 md:p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-purple-600">Unit-Based</p>
-                <p className="text-2xl font-bold text-purple-900">
+                <p className="text-[10px] md:text-sm text-purple-600">Unit-Based</p>
+                <p className="text-lg md:text-2xl font-bold text-purple-900">
                   {activeWorkers.filter(w => w.paymentType === 'unit-based').length}
                 </p>
               </div>
-              <CubeIcon className="h-10 w-10 text-purple-400" />
+              <CubeIcon className="h-6 w-6 md:h-10 md:w-10 text-purple-400" />
             </div>
           </div>
         </div>
       )}
 
-      {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4">
-        <div className="flex gap-2">
+      {/* Filters - Scrollable on mobile */}
+      <div className="bg-white rounded-lg shadow p-2 md:p-4">
+        <div className="flex gap-1.5 md:gap-2 overflow-x-auto pb-1 scrollbar-hide">
           <button
             onClick={() => setFilter('all')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'all'
                 ? 'bg-indigo-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -600,17 +601,18 @@ const { data: jobBands = [] } = useJobBands(formCompanyId, { isActive: true });
           </button>
           <button
             onClick={() => setFilter('monthly-salary')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'monthly-salary'
                 ? 'bg-blue-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Monthly Salary ({workers.filter(w => w.paymentType === 'monthly-salary').length})
+            <span className="hidden sm:inline">Monthly Salary</span>
+            <span className="sm:hidden">Monthly</span> ({workers.filter(w => w.paymentType === 'monthly-salary').length})
           </button>
           <button
             onClick={() => setFilter('hourly')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'hourly'
                 ? 'bg-green-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
@@ -620,19 +622,20 @@ const { data: jobBands = [] } = useJobBands(formCompanyId, { isActive: true });
           </button>
           <button
             onClick={() => setFilter('unit-based')}
-            className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+            className={`px-2.5 py-1.5 md:px-4 md:py-2 rounded-lg font-medium transition-colors text-xs md:text-sm whitespace-nowrap ${
               filter === 'unit-based'
                 ? 'bg-purple-600 text-white'
                 : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
             }`}
           >
-            Unit-Based ({workers.filter(w => w.paymentType === 'unit-based').length})
+            <span className="hidden sm:inline">Unit-Based</span>
+            <span className="sm:hidden">Unit</span> ({workers.filter(w => w.paymentType === 'unit-based').length})
           </button>
         </div>
       </div>
 
-      {/* Workers Table */}
-      <div className="bg-white rounded-lg shadow overflow-x-auto">
+      {/* Workers Table - Horizontal scroll on mobile */}
+      <div className="bg-white rounded-lg shadow overflow-x-auto -mx-4 md:mx-0 px-4 md:px-0">
         <table className="min-w-full divide-y divide-gray-200">
           <thead className="bg-gray-50">
             <tr>

@@ -978,96 +978,107 @@ export default function TimesheetsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="space-y-4 md:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Timesheets</h1>
-          <p className="text-gray-600 mt-2">Weekly timesheet view with billing details</p>
+          <h1 className="text-xl md:text-3xl font-bold text-gray-900">Timesheets</h1>
+          <p className="text-xs md:text-base text-gray-600 mt-1">Weekly timesheet view with billing details</p>
         </div>
         {/* Generate Timesheet Button - Only for Agent/Subcon */}
         {user && ['admin', 'agent', 'subcon-admin'].includes(user.role) && (
           <button
             onClick={openGenerateModal}
-            className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium"
+            className="flex items-center justify-center gap-1.5 px-3 py-1.5 md:px-4 md:py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors font-medium text-xs md:text-sm"
           >
-            <CalendarDaysIcon className="h-5 w-5" />
-            Generate Timesheets
+            <CalendarDaysIcon className="h-4 w-4 md:h-5 md:w-5" />
+            <span className="hidden sm:inline">Generate Timesheets</span>
+            <span className="sm:hidden">Generate</span>
           </button>
         )}
       </div>
 
       {/* Week Navigation */}
-      <div className="flex items-center justify-between bg-white rounded-lg shadow p-4">
+      <div className="flex items-center justify-between bg-white rounded-lg shadow p-2 md:p-4">
         <button
           onClick={handlePreviousWeek}
-          className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium"
+          className="flex items-center gap-1 px-2 py-1.5 md:px-4 md:py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium text-xs md:text-sm"
         >
-          ← Previous Week
+          <span className="hidden sm:inline">← Previous Week</span>
+          <span className="sm:hidden">← Prev</span>
         </button>
-        <div className="text-center">
-          <div className="text-lg font-bold text-gray-900">
-            {currentWeekStart.toLocaleDateString('en-MY', { month: 'long', day: 'numeric', year: 'numeric' })}
-            {' - '}
-            {new Date(currentWeekStart.getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-MY', { month: 'long', day: 'numeric', year: 'numeric' })}
+        <div className="text-center flex-1 px-2">
+          <div className="text-xs md:text-lg font-bold text-gray-900">
+            <span className="hidden sm:inline">
+              {currentWeekStart.toLocaleDateString('en-MY', { month: 'long', day: 'numeric', year: 'numeric' })}
+              {' - '}
+              {new Date(currentWeekStart.getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-MY', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </span>
+            <span className="sm:hidden">
+              {currentWeekStart.toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}
+              {' - '}
+              {new Date(currentWeekStart.getTime() + 5 * 24 * 60 * 60 * 1000).toLocaleDateString('en-MY', { month: 'short', day: 'numeric' })}
+            </span>
           </div>
           {isCurrentWeek() ? (
-            <span className="text-sm text-green-600 font-medium mt-1 flex items-center gap-1">
-              <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+            <span className="text-xs text-green-600 font-medium mt-0.5 flex items-center justify-center gap-1">
+              <span className="w-1.5 h-1.5 md:w-2 md:h-2 bg-green-500 rounded-full animate-pulse"></span>
               Current Week
             </span>
           ) : (
             <button
               onClick={handleCurrentWeek}
-              className="text-sm text-indigo-600 hover:text-indigo-800 font-medium mt-1"
+              className="text-xs text-indigo-600 hover:text-indigo-800 font-medium mt-0.5"
             >
-              ← Go to Current Week
+              ← Current
             </button>
           )}
         </div>
         <button
           onClick={handleNextWeek}
-          className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium"
+          className="flex items-center gap-1 px-2 py-1.5 md:px-4 md:py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium text-xs md:text-sm"
         >
-          Next Week →
+          <span className="hidden sm:inline">Next Week →</span>
+          <span className="sm:hidden">Next →</span>
         </button>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-4">
+      {/* Stats Cards - Compact on mobile */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-3">
+        <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-2 md:p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-gray-500 font-medium">Total Workers</p>
-              <p className="text-xl font-bold text-gray-900 mt-1">{weeklyTimesheets.length}</p>
+              <p className="text-[10px] md:text-xs text-gray-500 font-medium">Total Workers</p>
+              <p className="text-lg md:text-xl font-bold text-gray-900 mt-0.5">{weeklyTimesheets.length}</p>
             </div>
-            <ClipboardDocumentCheckIcon className="h-8 w-8 text-gray-300" />
+            <ClipboardDocumentCheckIcon className="h-5 w-5 md:h-8 md:w-8 text-gray-300" />
           </div>
         </div>
-        <div className="bg-blue-50 rounded-lg shadow-sm border border-blue-100 p-4">
+        <div className="bg-blue-50 rounded-lg shadow-sm border border-blue-100 p-2 md:p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-blue-600 font-medium">Pending</p>
-              <p className="text-xl font-bold text-blue-900 mt-1">{pendingCount}</p>
+              <p className="text-[10px] md:text-xs text-blue-600 font-medium">Pending</p>
+              <p className="text-lg md:text-xl font-bold text-blue-900 mt-0.5">{pendingCount}</p>
             </div>
-            <ClockIcon className="h-8 w-8 text-blue-300" />
+            <ClockIcon className="h-5 w-5 md:h-8 md:w-8 text-blue-300" />
           </div>
         </div>
-        <div className="bg-green-50 rounded-lg shadow-sm border border-green-100 p-4">
+        <div className="bg-green-50 rounded-lg shadow-sm border border-green-100 p-2 md:p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-green-600 font-medium">Verified</p>
-              <p className="text-xl font-bold text-green-900 mt-1">{verifiedCount}</p>
+              <p className="text-[10px] md:text-xs text-green-600 font-medium">Verified</p>
+              <p className="text-lg md:text-xl font-bold text-green-900 mt-0.5">{verifiedCount}</p>
             </div>
-            <CheckCircleIcon className="h-8 w-8 text-green-300" />
+            <CheckCircleIcon className="h-5 w-5 md:h-8 md:w-8 text-green-300" />
           </div>
         </div>
-        <div className="bg-purple-50 rounded-lg shadow-sm border border-purple-100 p-4">
+        <div className="bg-purple-50 rounded-lg shadow-sm border border-purple-100 p-2 md:p-4">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-xs text-purple-600 font-medium">Total Hours</p>
-              <p className="text-xl font-bold text-purple-900 mt-1">{totalHours.toFixed(1)}</p>
+              <p className="text-[10px] md:text-xs text-purple-600 font-medium">Total Hours</p>
+              <p className="text-lg md:text-xl font-bold text-purple-900 mt-0.5">{totalHours.toFixed(1)}</p>
             </div>
-            <ClockIcon className="h-8 w-8 text-purple-300" />
+            <ClockIcon className="h-5 w-5 md:h-8 md:w-8 text-purple-300" />
           </div>
         </div>
       </div>

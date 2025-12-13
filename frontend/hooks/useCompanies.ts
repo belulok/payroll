@@ -1,5 +1,28 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
 import feathersClient from '@/lib/feathers';
+
+// Hook to check if user is authenticated
+function useIsAuthenticated() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isChecking, setIsChecking] = useState(true);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        await feathersClient.reAuthenticate();
+        setIsAuthenticated(true);
+      } catch {
+        setIsAuthenticated(false);
+      } finally {
+        setIsChecking(false);
+      }
+    };
+    checkAuth();
+  }, []);
+
+  return { isAuthenticated, isChecking };
+}
 
 interface Company {
   _id: string;
@@ -38,6 +61,8 @@ interface Company {
 }
 
 export function useCompanies() {
+  const { isAuthenticated, isChecking } = useIsAuthenticated();
+
   return useQuery({
     queryKey: ['companies'],
     queryFn: async () => {
@@ -69,6 +94,8 @@ export function useCompanies() {
 
       return companiesWithCounts;
     },
+    // Only run query when authenticated
+    enabled: isAuthenticated && !isChecking,
     // Companies don't change often, so we can cache them longer
     staleTime: 10 * 60 * 1000, // 10 minutes
   });

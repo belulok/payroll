@@ -179,7 +179,17 @@ function setCompanyOnCreate(options = {}) {
           provider: undefined // Internal call
         });
 
-        const companyAgentId = company.agent?.toString();
+        // Handle company.agent being either an ObjectId, a string, or a populated object
+        let companyAgentId;
+        if (company.agent) {
+          if (typeof company.agent === 'object' && company.agent._id) {
+            // Populated object (e.g., { _id: '...', firstName: '...', ... })
+            companyAgentId = company.agent._id.toString();
+          } else {
+            // ObjectId or string
+            companyAgentId = company.agent.toString();
+          }
+        }
         const agentId = user._id.toString();
 
         // IMPORTANT: Fetch the latest user data from database to get updated companies list

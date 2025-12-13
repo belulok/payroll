@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
   },
   role: {
     type: String,
-    enum: ['admin', 'agent', 'subcon-admin', 'subcon-clerk', 'worker'],
+    enum: ['admin', 'agent', 'subcon-admin', 'subcon-clerk', 'worker', 'client'],
     default: 'worker',
     required: true
   },
@@ -43,6 +43,12 @@ const userSchema = new mongoose.Schema({
   worker: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'workers'
+  },
+
+  // Client Reference (for client role)
+  client: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Client'
   },
 
   isActive: {
@@ -91,6 +97,10 @@ userSchema.methods.isAgent = function() {
 
 userSchema.methods.isSubconClerk = function() {
   return this.role === 'subcon-clerk';
+};
+
+userSchema.methods.isClient = function() {
+  return this.role === 'client';
 };
 
 module.exports = function (app) {

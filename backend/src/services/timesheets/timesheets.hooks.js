@@ -6,6 +6,42 @@ const {
   validateTimesheetCompany
 } = require('../../hooks/timesheet-permissions');
 
+// Filter timesheets by client (for client users) - runs after population
+const filterByClientAfterPopulate = () => {
+  return async (context) => {
+    const { params, result } = context;
+
+    if (!params._filterByClientId || !result) {
+      return context;
+    }
+
+    const clientId = params._filterByClientId.toString();
+
+    const filterByClient = (timesheet) => {
+      if (!timesheet || !timesheet.worker) return false;
+      
+      // Check if worker's client matches
+      const workerClient = timesheet.worker.client;
+      if (workerClient) {
+        const workerClientId = typeof workerClient === 'object' 
+          ? workerClient._id?.toString() 
+          : workerClient?.toString();
+        return workerClientId === clientId;
+      }
+      return false;
+    };
+
+    if (Array.isArray(result)) {
+      context.result = result.filter(filterByClient);
+    } else if (result.data && Array.isArray(result.data)) {
+      result.data = result.data.filter(filterByClient);
+      result.total = result.data.length;
+    }
+
+    return context;
+  };
+};
+
 // Hook to populate worker field with nested relations
 const populateWorker = () => {
   return async (context) => {
@@ -106,8 +142,8 @@ module.exports = {
 
   after: {
     all: [populateWorker()],
-    find: [],
-    get: [],
+    find: [filterByClientAfterPopulate()],
+    get: [filterByClientAfterPopulate()],
     create: [],
     update: [],
     patch: [],

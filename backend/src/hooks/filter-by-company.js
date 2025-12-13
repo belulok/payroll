@@ -84,6 +84,31 @@ function filterByCompany(options = {}) {
       return context;
     }
 
+    // Client sees data from companies in their companies array
+    if (user.role === 'client' && user.client) {
+      try {
+        // Fetch the client record to get their companies list
+        const client = await app.service('clients').get(user.client, { provider: undefined });
+        const clientCompanies = client.companies || [client.company];
+        
+        if (clientCompanies.length > 0) {
+          params.query = params.query || {};
+          
+          if (method === 'find') {
+            params.query[companyField] = { $in: clientCompanies };
+          } else if (method === 'get' && context.id) {
+            // Store for after hook verification
+            params._clientCompanies = clientCompanies;
+            params._clientId = user.client;
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching client for filter:', err);
+        throw new Forbidden('Unable to verify client access');
+      }
+      return context;
+    }
+
     return context;
   };
 }

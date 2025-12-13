@@ -123,6 +123,18 @@ function checkTimesheetViewPermissions() {
       return context;
     }
 
+    // Clients can view timesheets for workers assigned to them
+    if (userRole === 'client') {
+      if (params.user.client) {
+        // We need to find all workers assigned to this client, then filter timesheets
+        // Store client ID for after-population filtering
+        params._filterByClientId = params.user.client;
+      } else {
+        throw new Forbidden('Client account not properly linked');
+      }
+      return context;
+    }
+
     // Other roles are not allowed to view timesheets
     throw new Forbidden(`Access denied. Role '${userRole}' cannot view timesheets`);
   };

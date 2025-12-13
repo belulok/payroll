@@ -46,6 +46,7 @@ interface User {
   lastName?: string;
   role: string;
   worker?: string;
+  client?: string;
 }
 
 // Admin, Agent, Subcon-Admin menu items
@@ -111,6 +112,22 @@ export default function Sidebar() {
         { name: 'Users', href: '/dashboard/users', icon: UserCircleIcon },
         { name: 'All Companies', href: '/dashboard/all-companies', icon: BuildingOfficeIcon },
         { name: 'Settings', href: '/dashboard/settings', icon: Cog6ToothIcon },
+      ];
+    }
+
+    // Client users see their client portal
+    if (user?.role === 'client') {
+      return [
+        { name: 'Dashboard', href: '/dashboard/client', icon: HomeIcon },
+        { name: 'Projects', href: '/dashboard/client/projects', icon: BriefcaseIcon },
+        { name: 'Workers', href: '/dashboard/client/workers', icon: UsersIcon },
+        { name: 'Attendance', href: '/dashboard/client/attendance', icon: QrCodeIcon },
+        { name: 'Timesheets', href: '/dashboard/client/timesheets', icon: ClockIcon },
+        { name: 'Tasks', href: '/dashboard/client/tasks', icon: ClipboardDocumentListIcon },
+        { name: 'Leave Calendar', href: '/dashboard/client/leave', icon: CalendarDaysIcon },
+        { name: 'Holidays', href: '/dashboard/client/holidays', icon: CalendarIcon },
+        { name: 'Invoices', href: '/dashboard/client/invoices', icon: DocumentTextIcon },
+        { name: 'Settings', href: '/dashboard/client/settings', icon: Cog6ToothIcon },
       ];
     }
 

@@ -222,11 +222,107 @@ const populateReferences = () => {
   };
 };
 
+// Filter workers by client when user is a client
+const filterByClient = () => {
+  return async (context) => {
+    const { params, method, app } = context;
+    const user = params.user;
+
+    if (!params.provider || !user) {
+      return context;
+    }
+
+    // If user is a client, filter workers assigned to their client
+    if (user.role === 'client' && user.client) {
+      params.query = params.query || {};
+      
+      if (method === 'find') {
+        params.query.client = user.client;
+      } else if (method === 'get' && context.id) {
+        // Store client ID for after hook verification
+        params._userClientId = user.client;
+      }
+    }
+
+    return context;
+  };
+};
+
+// Verify client can access the worker record
+const verifyClientAccess = () => {
+  return async (context) => {
+    const { params, result, method } = context;
+    const user = params.user;
+
+    if (method !== 'get' || !user || user.role !== 'client') {
+      return context;
+    }
+
+    if (!result || !params._userClientId) {
+      return context;
+    }
+
+    // Check if worker is assigned to this client
+    const workerClientId = typeof result.client === 'object' 
+      ? result.client._id?.toString() 
+      : result.client?.toString();
+
+    if (workerClientId !== params._userClientId.toString()) {
+      const { Forbidden } = require('@feathersjs/errors');
+      throw new Forbidden('You can only view workers assigned to you');
+    }
+
+    return context;
+  };
+};
+
+// Limit worker info for client view
+const limitWorkerInfoForClient = () => {
+  return async (context) => {
+    const { params, result } = context;
+    const user = params.user;
+
+    if (!params.provider || !user || user.role !== 'client') {
+      return context;
+    }
+
+    // Define fields that clients can see
+    const allowedFields = [
+      '_id', 'firstName', 'lastName', 'employeeId', 'position', 'department',
+      'employmentType', 'employmentStatus', 'paymentType', 'client', 'project',
+      'workLocation', 'joinDate', 'isActive', 'profilePicture'
+    ];
+
+    const filterFields = (worker) => {
+      if (!worker) return worker;
+      const filtered = {};
+      allowedFields.forEach(field => {
+        if (worker[field] !== undefined) {
+          filtered[field] = worker[field];
+        }
+      });
+      return filtered;
+    };
+
+    if (result) {
+      if (Array.isArray(result)) {
+        context.result = result.map(filterFields);
+      } else if (result.data && Array.isArray(result.data)) {
+        result.data = result.data.map(filterFields);
+      } else {
+        context.result = filterFields(result);
+      }
+    }
+
+    return context;
+  };
+};
+
 module.exports = {
   before: {
     all: [authenticate('jwt'), populateUser()],
-    find: [filterByCompany()],
-    get: [filterByCompany()],
+    find: [filterByClient(), filterByCompany()],
+    get: [filterByClient(), filterByCompany()],
     create: [setCompanyOnCreate()],
     update: [filterByCompany()],
     patch: [filterByCompany()],
@@ -235,8 +331,8 @@ module.exports = {
 
   after: {
     all: [populateReferences()],
-    find: [],
-    get: [verifyAgentAccess()],
+    find: [limitWorkerInfoForClient()],
+    get: [verifyAgentAccess(), verifyClientAccess(), limitWorkerInfoForClient()],
     create: [createUserAccount()],
     update: [],
     patch: [],

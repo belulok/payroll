@@ -90,3 +90,4 @@ notificationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 }); // TTL in
 module.exports = mongoose.model('notifications', notificationSchema);
 
 
+

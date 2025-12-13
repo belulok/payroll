@@ -15,3 +15,4 @@ export const FRONTEND_URL = config.frontendUrl;
 
 export default config;
 
+
